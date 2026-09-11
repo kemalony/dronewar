@@ -1,0 +1,785 @@
+{
+  "sprites": [
+    {
+      "name": "city_istanbul",
+      "file": "city_istanbul.png",
+      "width": 480,
+      "height": 800,
+      "source": [
+        960,
+        1600
+      ],
+      "kind": "tile"
+    },
+    {
+      "name": "landmark_istanbul",
+      "file": "landmark_istanbul.png",
+      "width": 160,
+      "height": 160,
+      "source": [
+        320,
+        320
+      ],
+      "kind": "landmark"
+    },
+    {
+      "name": "building_istanbul_1",
+      "file": "buildings/istanbul_1.png",
+      "width": 130,
+      "height": 170,
+      "source": [
+        260,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "building_istanbul_2",
+      "file": "buildings/istanbul_2.png",
+      "width": 122,
+      "height": 170,
+      "source": [
+        245,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "building_istanbul_3",
+      "file": "buildings/istanbul_3.png",
+      "width": 94,
+      "height": 170,
+      "source": [
+        188,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "building_istanbul_4",
+      "file": "buildings/istanbul_4.png",
+      "width": 78,
+      "height": 170,
+      "source": [
+        157,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "city_paris",
+      "file": "city_paris.png",
+      "width": 480,
+      "height": 800,
+      "source": [
+        960,
+        1600
+      ],
+      "kind": "tile"
+    },
+    {
+      "name": "landmark_paris",
+      "file": "landmark_paris.png",
+      "width": 160,
+      "height": 160,
+      "source": [
+        320,
+        320
+      ],
+      "kind": "landmark"
+    },
+    {
+      "name": "building_paris_1",
+      "file": "buildings/paris_1.png",
+      "width": 125,
+      "height": 170,
+      "source": [
+        251,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "building_paris_2",
+      "file": "buildings/paris_2.png",
+      "width": 114,
+      "height": 170,
+      "source": [
+        229,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "building_paris_3",
+      "file": "buildings/paris_3.png",
+      "width": 99,
+      "height": 170,
+      "source": [
+        199,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "building_paris_4",
+      "file": "buildings/paris_4.png",
+      "width": 159,
+      "height": 170,
+      "source": [
+        318,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "city_newyork",
+      "file": "city_newyork.png",
+      "width": 480,
+      "height": 800,
+      "source": [
+        960,
+        1600
+      ],
+      "kind": "tile"
+    },
+    {
+      "name": "landmark_newyork",
+      "file": "landmark_newyork.png",
+      "width": 160,
+      "height": 160,
+      "source": [
+        320,
+        320
+      ],
+      "kind": "landmark"
+    },
+    {
+      "name": "building_newyork_1",
+      "file": "buildings/newyork_1.png",
+      "width": 78,
+      "height": 170,
+      "source": [
+        157,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "building_newyork_2",
+      "file": "buildings/newyork_2.png",
+      "width": 118,
+      "height": 170,
+      "source": [
+        236,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "building_newyork_3",
+      "file": "buildings/newyork_3.png",
+      "width": 115,
+      "height": 170,
+      "source": [
+        230,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "building_newyork_4",
+      "file": "buildings/newyork_4.png",
+      "width": 153,
+      "height": 170,
+      "source": [
+        307,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "city_tokyo",
+      "file": "city_tokyo.png",
+      "width": 480,
+      "height": 800,
+      "source": [
+        960,
+        1600
+      ],
+      "kind": "tile"
+    },
+    {
+      "name": "landmark_tokyo",
+      "file": "landmark_tokyo.png",
+      "width": 160,
+      "height": 160,
+      "source": [
+        320,
+        320
+      ],
+      "kind": "landmark"
+    },
+    {
+      "name": "building_tokyo_1",
+      "file": "buildings/tokyo_1.png",
+      "width": 110,
+      "height": 170,
+      "source": [
+        221,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "building_tokyo_2",
+      "file": "buildings/tokyo_2.png",
+      "width": 170,
+      "height": 160,
+      "source": [
+        340,
+        321
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "building_tokyo_3",
+      "file": "buildings/tokyo_3.png",
+      "width": 137,
+      "height": 170,
+      "source": [
+        274,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "building_tokyo_4",
+      "file": "buildings/tokyo_4.png",
+      "width": 166,
+      "height": 170,
+      "source": [
+        332,
+        340
+      ],
+      "kind": "building"
+    },
+    {
+      "name": "drone_player",
+      "file": "drone_player.png",
+      "width": 96,
+      "height": 96,
+      "source": [
+        192,
+        192
+      ],
+      "kind": "unit"
+    },
+    {
+      "name": "drone_scout",
+      "file": "drone_scout.png",
+      "width": 64,
+      "height": 64,
+      "source": [
+        128,
+        128
+      ],
+      "kind": "unit"
+    },
+    {
+      "name": "drone_gunner",
+      "file": "drone_gunner.png",
+      "width": 88,
+      "height": 80,
+      "source": [
+        176,
+        160
+      ],
+      "kind": "unit"
+    },
+    {
+      "name": "drone_shield",
+      "file": "drone_shield.png",
+      "width": 96,
+      "height": 96,
+      "source": [
+        192,
+        192
+      ],
+      "kind": "unit"
+    },
+    {
+      "name": "boss_gunship",
+      "file": "boss_gunship.png",
+      "width": 208,
+      "height": 176,
+      "source": [
+        416,
+        352
+      ],
+      "kind": "boss"
+    },
+    {
+      "name": "muzzle_flash",
+      "file": "muzzle_flash.png",
+      "width": 48,
+      "height": 48,
+      "source": [
+        96,
+        96
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "rotor_wash",
+      "file": "rotor_wash.png",
+      "width": 96,
+      "height": 96,
+      "source": [
+        192,
+        192
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "hud_target",
+      "file": "hud_target.png",
+      "width": 48,
+      "height": 48,
+      "source": [
+        96,
+        96
+      ],
+      "kind": "ui"
+    },
+    {
+      "name": "cloud_wisp",
+      "file": "cloud_wisp.png",
+      "width": 256,
+      "height": 128,
+      "source": [
+        512,
+        256
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "cloud_puff",
+      "file": "cloud_puff.png",
+      "width": 192,
+      "height": 160,
+      "source": [
+        384,
+        320
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "pu_weapon",
+      "file": "pu_weapon.png",
+      "width": 48,
+      "height": 48,
+      "source": [
+        96,
+        96
+      ],
+      "kind": "item"
+    },
+    {
+      "name": "pu_shield",
+      "file": "pu_shield.png",
+      "width": 48,
+      "height": 48,
+      "source": [
+        96,
+        96
+      ],
+      "kind": "item"
+    },
+    {
+      "name": "boom_flash",
+      "file": "boom_flash.png",
+      "width": 96,
+      "height": 96,
+      "source": [
+        192,
+        192
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "boom_fire",
+      "file": "boom_fire.png",
+      "width": 96,
+      "height": 96,
+      "source": [
+        192,
+        192
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "boom_smoke",
+      "file": "boom_smoke.png",
+      "width": 96,
+      "height": 96,
+      "source": [
+        192,
+        192
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "cloud_a",
+      "file": "cloud_a.png",
+      "width": 280,
+      "height": 100,
+      "source": [
+        560,
+        200
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "cloud_b",
+      "file": "cloud_b.png",
+      "width": 160,
+      "height": 140,
+      "source": [
+        320,
+        280
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "cloud_c",
+      "file": "cloud_c.png",
+      "width": 260,
+      "height": 130,
+      "source": [
+        520,
+        260
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "cloud_d",
+      "file": "cloud_d.png",
+      "width": 200,
+      "height": 180,
+      "source": [
+        400,
+        360
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "cloud_e",
+      "file": "cloud_e.png",
+      "width": 300,
+      "height": 120,
+      "source": [
+        600,
+        240
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "cloud_f",
+      "file": "cloud_f.png",
+      "width": 240,
+      "height": 150,
+      "source": [
+        480,
+        300
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "boss_paris",
+      "file": "boss_paris.png",
+      "width": 208,
+      "height": 176,
+      "source": [
+        416,
+        352
+      ],
+      "kind": "boss"
+    },
+    {
+      "name": "boss_newyork",
+      "file": "boss_newyork.png",
+      "width": 208,
+      "height": 176,
+      "source": [
+        416,
+        352
+      ],
+      "kind": "boss"
+    },
+    {
+      "name": "boss_tokyo",
+      "file": "boss_tokyo.png",
+      "width": 208,
+      "height": 176,
+      "source": [
+        416,
+        352
+      ],
+      "kind": "boss"
+    },
+    {
+      "name": "drone_bomber",
+      "file": "drone_bomber.png",
+      "width": 88,
+      "height": 80,
+      "source": [
+        176,
+        160
+      ],
+      "kind": "unit"
+    },
+    {
+      "name": "drone_kamikaze",
+      "file": "drone_kamikaze.png",
+      "width": 56,
+      "height": 56,
+      "source": [
+        112,
+        112
+      ],
+      "kind": "unit"
+    },
+    {
+      "name": "drone_sniper",
+      "file": "drone_sniper.png",
+      "width": 80,
+      "height": 72,
+      "source": [
+        160,
+        144
+      ],
+      "kind": "unit"
+    },
+    {
+      "name": "rocket",
+      "file": "rocket.png",
+      "width": 20,
+      "height": 44,
+      "source": [
+        40,
+        88
+      ],
+      "kind": "fx"
+    },
+    {
+      "name": "pu_rocket",
+      "file": "pu_rocket.png",
+      "width": 48,
+      "height": 48,
+      "source": [
+        96,
+        96
+      ],
+      "kind": "item"
+    },
+    {
+      "name": "drone_swift",
+      "file": "drone_swift.png",
+      "width": 96,
+      "height": 96,
+      "source": [
+        192,
+        192
+      ],
+      "kind": "unit"
+    },
+    {
+      "name": "drone_tank",
+      "file": "drone_tank.png",
+      "width": 104,
+      "height": 96,
+      "source": [
+        208,
+        192
+      ],
+      "kind": "unit"
+    },
+    {
+      "name": "drone_ghost",
+      "file": "drone_ghost.png",
+      "width": 96,
+      "height": 96,
+      "source": [
+        192,
+        192
+      ],
+      "kind": "unit"
+    },
+    {
+      "name": "city_istanbul_b",
+      "file": "city_istanbul_b.png",
+      "width": 480,
+      "height": 800,
+      "source": [
+        960,
+        1600
+      ],
+      "kind": "tile"
+    },
+    {
+      "name": "city_paris_b",
+      "file": "city_paris_b.png",
+      "width": 480,
+      "height": 800,
+      "source": [
+        960,
+        1600
+      ],
+      "kind": "tile"
+    },
+    {
+      "name": "city_newyork_b",
+      "file": "city_newyork_b.png",
+      "width": 480,
+      "height": 800,
+      "source": [
+        960,
+        1600
+      ],
+      "kind": "tile"
+    },
+    {
+      "name": "city_tokyo_b",
+      "file": "city_tokyo_b.png",
+      "width": 480,
+      "height": 800,
+      "source": [
+        960,
+        1600
+      ],
+      "kind": "tile"
+    },
+    {
+      "name": "sub_drone",
+      "file": "sub_drone.png",
+      "width": 48,
+      "height": 48,
+      "source": [
+        96,
+        96
+      ],
+      "kind": "unit"
+    },
+    {
+      "name": "pu_subdrone",
+      "file": "pu_subdrone.png",
+      "width": 48,
+      "height": 48,
+      "source": [
+        96,
+        96
+      ],
+      "kind": "item"
+    },
+    {
+      "name": "drone_jammer",
+      "file": "drone_jammer.png",
+      "width": 80,
+      "height": 72,
+      "source": [
+        160,
+        144
+      ],
+      "kind": "unit"
+    },
+    {
+      "name": "boss_pylon",
+      "file": "boss_pylon.png",
+      "width": 72,
+      "height": 88,
+      "source": [
+        144,
+        176
+      ],
+      "kind": "boss"
+    },
+    {
+      "name": "boss_bay",
+      "file": "boss_bay.png",
+      "width": 88,
+      "height": 72,
+      "source": [
+        176,
+        144
+      ],
+      "kind": "boss"
+    },
+    {
+      "name": "boss_antenna",
+      "file": "boss_antenna.png",
+      "width": 64,
+      "height": 64,
+      "source": [
+        128,
+        128
+      ],
+      "kind": "boss"
+    },
+    {
+      "name": "city_port",
+      "file": "city_port.png",
+      "width": 480,
+      "height": 800,
+      "source": [
+        960,
+        1600
+      ],
+      "kind": "tile"
+    },
+    {
+      "name": "city_port_b",
+      "file": "city_port_b.png",
+      "width": 480,
+      "height": 800,
+      "source": [
+        960,
+        1600
+      ],
+      "kind": "tile"
+    },
+    {
+      "name": "gnd_radar",
+      "file": "gnd_radar.png",
+      "width": 56,
+      "height": 80,
+      "source": [
+        112,
+        160
+      ],
+      "kind": "ground"
+    },
+    {
+      "name": "gnd_aa",
+      "file": "gnd_aa.png",
+      "width": 64,
+      "height": 72,
+      "source": [
+        128,
+        144
+      ],
+      "kind": "ground"
+    },
+    {
+      "name": "gnd_jammer",
+      "file": "gnd_jammer.png",
+      "width": 48,
+      "height": 64,
+      "source": [
+        96,
+        128
+      ],
+      "kind": "ground"
+    }
+  ]
+}

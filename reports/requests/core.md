@@ -1,0 +1,2 @@
+MANIFEST.js'e `sub_drone` (48x48, kind "unit") ve `pu_subdrone` (48x48, kind "item") eklenmeli — assets/manifest.json'da var ama gömülü kopyada yok (assets_used testi kırılır).
+Round 16: MANIFEST.js'e liman bolumu + kara hedefi sprite'lari eklenmeli (assets/manifest.json'da zaten var): city_port, city_port_b (kind "tile"), gnd_radar, gnd_aa, gnd_jammer (kind "ground"). Assets._makeFallback'e de kind==="ground" dali lazim (PNG yuku basarisiz olursa cizim yok olur).

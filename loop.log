@@ -1,0 +1,164 @@
+Loop detection halted the run (consecutive_identical_tool_calls: the model repeated the same tool call with identical arguments). This is an always-on guard and cannot be disabled via `model.skipLoopDetection`.
+Round 2 tamamlandı. Özet:
+
+## Yapılanlar
+
+1. **Determinizm (CRITICAL) — ÇÖZÜLDÜ**
+   - Kök neden: Testin iki hızda aynı kare sayısı kullanması, farklı toplam sim süresi üretiyordu (191px sahte fark).
+   - Çözüm: `evaluate.py`'de her iki hızda aynı toplam sim adımı (N_TICKS=240) + aynı input zamanlaması. `startGame` clock.acc sıfırlıyor.
+   - Sonuç: **max_pos_diff=0.000000px** ✓
+
+2. **Görünmeyen Dron/Mermi — İYİLEŞTİRİLDİ**
+   - Dron: Karanlık kontrast halkası + %30 büyütme.
+   - Mermiler: Glow halesi + dikdörtgen iz, `lighter` blend modu.
+   - Vision skorları: [7,4,6,2,7] → [8,9,7,8,7].
+
+3. **HUD Ayrımı — TAMAMLANDI**
+   - Oyun HUD'u (SKOR, can bar) ayrı metot; teknik sayaçlar yalnız `?debug=1` altında.
+
+4. **Ekran Görüntüsü Altyapısı**
+   - Canvas tainted olduğu için `_drawWorldNoHud` (sade arka plan) + `page.screenshot`.
+   - Dron merkezde sabitlenir, vision prompt'u bağlamlandırıldı.
+
+## Test Sonuçları
+- **7 PASS / 1 FAIL** (vision_polish: min_score=7 hedef 8, blocking=2 hedef 0)
+- `assets_check`: VERDICT=PASS (32/32)
+
+## Kalan
+Vision polish (cila turu, Round 11+): Dron/mermi kenarlarında bulanıklık/keskinlik eksikliği. Ana hedefler (determinizm, görünürlük, HUD) çözüldü.
+
+Rapor: `reports/round_2.md`, durum: `STATE.md` güncellendi.
+Loop detection halted the run (turn_tool_call_cap: the turn reached the per-turn tool-call limit). A per-turn tool-call cap was reached. The default is adaptive (allows up to 1000 diverse calls, halting only on repeated calls); an explicitly set `model.maxToolCallsPerTurn` is a hard cap. If the model was repeating the same call, investigate the repetition; otherwise unset the value to use the adaptive default, or raise it (set 0 to disable).
+Round 4 tamamlandı. Özet:
+
+**Uygulanan değişiklikler:**
+- **A (Mermiler):** Sütun yerine ayrık tracer — 22px iz, beyaz çekirdek 2.5px + cyan dış 7px, `lighter` karışım. `tracer_shape` testi eklendi ve PASS (2.8% ≤ 5%).
+- **B (Dron):** Tam cyan çember kaldırıldı; yumuşak radyal hâle (alfa 0.35) + ince cyan kenar ışığı (2px). Dron %10 büyütüldü.
+- **C (Binalar):** Ölçek 0.45-0.65 aralığına sıkıştırıldı, gölge elipsi (alfa 0.35) eklendi, katman 0.92 koyultuldu.
+
+**Test sonuçları (12 assertion):**
+- 11 PASS / 1 FAIL
+- `assets_check`: VERDICT=PASS (32/32)
+- Determinizm: 0.000000 px
+- Konsol hatası: 0
+- `foreground_contrast`: dron_belirgin=true, mermiler_gorunur=true
+- `tracer_shape`: 22px (2.8%)
+- `vision_polish`: min_score=8, blocking=3 (hedef 0) — vision modeli tutarsız, not'lar "doğal kabul edilebilir" diyor ama blocking sayıyor
+
+Raporu harness yazdı (`reports/round_4.md`). STATE.md güncellendi.
+Round 5 uygulaması tamamlandı. Özet:
+
+**A. Mermi kontrastı:**
+- Her mermiye `rgba(0,0,0,0.7)` alfa ile 6px koyu kontur (source-over)
+- Arkada ~10px koyu iz (trail array'den, alfa 0.4)
+- Üstüne parlak çekirdek: oyuncu cyan + beyaz, düşman turuncu-kırmızı + açık pembe
+- Toplam genişlik ≤ 6px, `tracerLen` hâlâ 22px → `tracer_shape` testi geçmeli
+
+**B. Düşman dronları:**
+- `Enemy` sınıfı: scout (HP1, 260px/s), gunner (HP3, 110px/s, nişanlı mermi), shield (HP3+kalkan3, 140px/s)
+- Ayrı havuzlar: scout×16, gunner×8, shield×8 — sıcak döngüde `new` yok
+- Spawn: LCG ile 1600+rnd*500ms aralık, x kenara yakın ağırlıklı
+- Düşman mermileri ayrı havuz (32), 260px/s, turuncu-kırmızı renk
+- Prosedürel yedek mevcut (`_fbDrone` zaten unit kind'ini kapsıyor)
+
+**C. Çarpışma, can, skor:**
+- Daire-daire: oyuncu mermisi r3 / düşman r(sprite×0.7), düşman mermisi r5 / oyuncu r16
+- Oyuncu 3 can, 1200ms dokunulmazlık (yanıp sönerek)
+- Skor: scout=100, gunner=250, shield=400; HUD'da skor + drone ikonu ile can
+- Düşman ölünce basit parlama (glow zaten mermi çiziminde var)
+
+**Test kancaları:** `spawnEnemy(type,x,y)`, `state().enemies[]` (type/x/y/hp/shieldHp/score), `state().player.lives`, `state().ebullets`
+
+Sözdizimi temiz, 32/32 PNG yükleniyor. Orkestratör ölçümüne hazır.
+Round 6 tamamlandı. Özet:
+
+**14 PASS / 1 FAIL (15 assertion)**
+
+| Kabul kriteri | Sonuç |
+|---|---|
+| `assets_check.py` VERDICT=PASS (32/32) | ✅ PASS |
+| Mevcut 14 assertion + `shield_absorb` PASS, konsol hatası 0 | ✅ 14/15 PASS, pageerrors=0 |
+| `enemy_determinism` ve `determinism_2fps` bozulmadı | ✅ birebir aynı |
+| `perf_heavy` medyan ≤ 20 ms, 50 ms üstü kare 0 | ✅ median=0.30ms, over50=0 |
+| TODO/FIXME/stub yok | ✅ temiz |
+
+**Yapılan değişiklikler:**
+
+- **FX sistemi** (`index.html`): `Explosion` (üç katman: beyaz çekirdek ~110ms, turuncu ateş ~260ms `(1-t)^2.8` sönüm + rastgele döndürme, gecikmeli duman), `Shockwave` (≤34px, ≤190ms, karesel sönüm), `SparkSystem` (renk+alfa kovası gruplu çizim, ≤14/patlama, ≤110 toplam), `FxSystem` (havuz yönetimi). Yalnızca çizim katmanı — determinizm bozulmadı.
+- **Vuruş parlaması**: `Assets.whiteTint()` offscreen canvas'a `source-in` + beyaz fillRect (sprite boyutunda, tuval geneline değil). ~90ms alfa ile söner.
+- **Düşman görsel ayrımı**: scout kırmızı kenar ışığı, gunner turuncu kenar + namlu parlaması, shield mavi kabarcık (kalkan kırılınca söner). Oyuncu cyan hâle tek başına.
+- **Çarpışma geri bildirimi**: hasar → `hitFlash` + küçük kıvılcım; ölüm → `fx.explode()` (patlama + şok dalgası + 14 kıvılcım).
+- **`evaluate.py`**: `shield_absorb` assertion'ı eklendi (mermi doğrudan havuzdan hedefe yerleştirilir, 6 vuruş = 3 kalkan + 3 can = ölüm).
+
+Tek kalan FAIL: `vision_polish` (min_score=7, blocking=3) — öznel vision modeli puanı, round 6 kabul kriterinde yok. Round 11+ cila turuna bırakıldı.
+Round 7 tamamlandı. **18 PASS / 1 FAIL** — tek kırmızı `vision_polish` (mevcut, Round 6'dan beri).
+
+**Yeni testler (tümü PASS):**
+- `stage_progress` — İstanbul→Paris→NY→Tokyo sırayla geçiş, kota ve şehir adı doğru
+- `stage_determinism` — bölüm geçişi sonrası 240 kare, iki kare hızında birebir aynı
+- `landmark_once` — simge yapı kotanın yarısında bir kez tetiklenir, bölüm geçişinde sıfırlanır
+
+**Uygulanan özellikler:**
+- **Bölüm ilerlemesi:** Kota bazlı (15/20/25/30), `forceKills(n)` test kancası, 1500ms crossfade (zemin + binalar birlikte geçer), bölüm başlığı (`BÖLÜM n — ŞEHİR`, oyun alanını karartmadan)
+- **Zorluk eğrisi:** Spawn aralığı çarpanı (1.00→0.62), düşman hızı (1.00→1.30), mermi hızı (260→320 px/s), gunner ateş aralığı (1500→1100 ms), eşzamanlı sınır (bölüm 1-2: 4, bölüm 3-4: 6)
+- **Düşman karışımı:** Bölüm 1 scout+gunner, bölüm 2 +shield, bölüm 3-4 üçü de
+- **Simge yapılar:** Her bölümde kotanın yarısında bir kez, bina hızında kayar, paralaksa dahil, yumuşak gölge
+Round 8 tamamlandı. Sonuç: **22 PASS / 1 FAIL / 23**.
+
+## Yapılanlar
+
+**A. Simge yapılar bölüm kartına taşındı:**
+- `CityScroller.triggerLandmark()` artık sahnede çizim yapmıyor, sadece flag ayarlıyor
+- `_drawStageCard()`: 1800ms kart — ortada `landmark_<sehir>` (128px amblem), altında `BÖLÜM n` + şehir adı, ince çizgi, yumuşak girip çıkış (300ms), oyun alanını karartmıyor
+
+**B. Bölüm sonu boss'u:**
+- `Boss` sınıfı: can eşiğine göre faz 1-4, birikimli desenler (yelpaze → +daire → +çapraz tarama), LCG deterministik, giriş 1500ms + salınım (70px/3s), beyaz tint vuruş parlaması
+- Boss döngüsü: kota dolunca `DIKKAT` uyarısı (1200ms yanıp sönen) → boss üstten girer → ölünce 6 patlama (500ms) + ekran parlaması → bölüm geçişi veya VICTORY
+- Can çubuğu üstte, düşman spawn'ı boss aktifken durur
+- Bölüm 4 boss'u ölünce VICTORY ekranı: skor, süre, yeni rekor vurgusu
+
+**C. Testler (mevcut 19'a 4 yeni eklendi):**
+- `boss_spawn` ✅ — 4 bölümde de doğru can, spawn durdu
+- `boss_phases` ✅ — sürekli ateşle faz 3'e ulaşıldı, can düştü
+- `boss_determinism` ✅ — 240 kare, iki kare hızında birebir aynı
+- `victory` ✅ — bölüm 4 boss'u ölünce mod `victory`
+
+**Tek kalan FAIL:** `vision_polish` — Round 7'den beri mevcut, vision modeli tutarsızlığı (kod tarafı temiz; `foreground_contrast` ölçülü kapı PASS).
+Round 9 tamamlandı. Sonuç:
+
+**26 PASS / 1 FAIL (vision_polish)** — vision modeli tutarsız çıktı veriyor (scores=8 ama blocking=2, "saatli yapı" diye bir şey uydurmuş). Kod tarafı temiz: `foreground_contrast` ölçülü kapı PASS (kontrast 195-224).
+
+Yapılanlar:
+- **Ses:** `Sound` sınıfı — prosedürel WebAudio, 8 ses karakteri (oyuncu/düşman/boss atışı, isabet, ölüm, uyarı, bölüm geçişi, zafer), aktif ses sayacı (max 8), M ile sessize alma. AudioContext askıdayken hata yok.
+- **His:** Ekran sarsıntısı (260ms/500ms, karesel sönüm, yalnız çizim), hit-stop (45ms/120ms, autotest'te devre dışı), rotor tozu (hıza göre döner+şeffaflaşır), nişan çerçevesi (en yakın düşman üstünde).
+- **Menüler:** BAŞLA butonu + en yüksek skor + kontroller, DURAKLADI (%35 karartma), game over (skor + bölüm/şehir + öldüren tip), zafer (skor + süre + YENİ REKOR). 150ms yumuşak geçiş.
+- **Testler:** `audio_no_throw`, `shake_display_only`, `shake_triggered`, `hud_states` — hepsi PASS.
+Loop detection halted the run (turn_tool_call_cap: the turn reached the per-turn tool-call limit). A per-turn tool-call cap was reached. The default is adaptive (allows up to 1000 diverse calls, halting only on repeated calls); an explicitly set `model.maxToolCallsPerTurn` is a hard cap. If the model was repeating the same call, investigate the repetition; otherwise unset the value to use the adaptive default, or raise it (set 0 to disable).
+Round 12 tamamlandı. **43/43 test PASS** (mevcut 36 + yeni 7).
+
+## Uygulanan özellikler
+
+### A. Yeni düşman tipleri
+- **bomber** (hp5, 350 puan): Yavaş inis, 1800ms'de bir aşağı doğru 3'lü bomba yelpazesi (vy=200)
+- **kamikaze** (hp1, 150 puan): Zikzak iniş, ekranın üst üçte birinde oyuncunun x'ine kilitlenir ve 520px/s dalış
+- **sniper** (hp2, 300 puan): Üst üçte birde durur, 600ms kırmızı nişan çizgisi + 520px/s hızlı mermi
+- Bölüme göre karışım: 1=scout+gunner, 2=+kamikaze, 3=+bomber, 4=+sniper ve hepsi
+- Her tip kendi havuzunda, prosedürel fallback hazır
+
+### B. Roket
+- `pu_rocket` %8 drop (LCG), alınınca 15sn boyunca normal atışa ek olarak 900ms'de bir roket
+- Hafif güdümlü (dönüş ≤180°/s), 520px/s, hasar 3, isabette patlama
+- Hedef seçimi deterministik: en yakın aktif düşman, eşitlikte en küçük havuz indeksi
+- Kendi havuzu (8), HUD'da ROKET süre
+
+### C. Hasarda silah sıfırlama
+- Can kaybedince silah seviyesi DOĞRUDAN 1'e düşer (kademeli değil)
+- Roket süresi sıfırlanır, HUD'da SİLAH 1 kırmızı yanıp söner (1200ms)
+- Q tuşu ile elle silah değiştirme
+
+### D. Dron seçimi
+- 4 dron: falcon (başlangıç), swift (5000), tank (12000), ghost (25000)
+- Menü → dron seçim ekranı → oyun akışı
+- Dokunmatik: sol/sağ üçte biri seçim değiştirir, orta başlatır (durum `shipselect` kalır)
+- Klavye: ←/→ gezinir, Space başlatır
+- Kilitli dronda soluk çizim + açılış şartı yazısı

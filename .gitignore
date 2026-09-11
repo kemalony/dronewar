@@ -1,0 +1,9 @@
+# Yayin paketi (uretilen, 9 MB) — build.py ile yeniden uretilir
+build/
+# Degerlendirme ekran goruntuleri (19 MB) — her kosuda yeniden uretilir
+reports/shots/
+__pycache__/
+*.pyc
+# Ajan gunlukleri
+loop_*.log
+loop_stdout.log

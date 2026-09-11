@@ -1,0 +1,87 @@
+/* units paketinin kendi sabitleri — CONFIG'i genisletir.
+ *
+ * Neden ayri dosya: src/core/CONFIG.js yalnizca core ajaninindir.
+ * build_order.json icinde core/CONFIG.js'ten SONRA siralanir.            */
+CONFIG.SUBDRONE = {
+  pool: 2,                // havuz boyutu (2 mini refakatci)
+  offset: 34,             // oyuncunun yanindaki mesafe (px)
+  followSmooth: 10,       // yumusak gecikme (1/s) — kritik sonumlu yaklasim
+  fireIntervalMs: 190,    // namlu modu ates araligi
+  damage: 1,              // namlu modu hasari
+  kamikazeSpeed: 620,     // px/s — kamikaze modunda hiza
+  kamikazeDamage: 6,      // carpisma hasari
+  size: 48,               // cizim boyutu (manifest sub_drone 48x48)
+};
+/* Jammer dronu: ateş ETMEZ; ekranda kaldigi surece oyuncuyu zayiflatir.
+ * Oyuncu radius icindeyken birincil ates araligi fireSlowMul kadar yavaslar.
+ * Havuz 4, onceden ayrilmis; Math.random YASAK (LCG). */
+CONFIG.JAMMER = {
+  pool: 4,                // havuz boyutu
+  speed: 55,              // px/s — yavas inis
+  hoverY: CONFIG.H * 0.30,   // ekranin ust yarısında kalmaya calisir
+  swayAmp: 70,            // yatay salinim genligi (px)
+  swayPeriod: 4,          // salinim periyodu (s)
+  radius: 200,            // jamming menzili (px) — oyuncu merkezine uzaklik
+  fireSlowMul: 0.5,       // menzil icinde ates araligi carpani (yavaslatma)
+  size: 80,               // cizim boyutu (manifest drone_jammer 80x72)
+  ringPulse: 1.6,         // nabiz halka frekansi (rad/s) — yalniz cizim
+};
+/* Cok asamali tasici boss (bolum 4 / Tokyo): parcalar sirayla cokertilir.
+ * Sira: iki yan pilon -> kargo kapagi -> komuta anteni -> govde.
+ * Govde ancak anten dustuktan sonra hasar alir. Her parcain kendi sprite'i
+ * ve can'i var; dusen parca patlar ve o parcain saldirisi durur.
+ * Tum zamanlama sim zamanina bagli; performance.now() YOK. */
+CONFIG.CARRIER = {
+  entryMs: 1800,          // giris inişi (ustten -> hoverY)
+  hoverY: 150,            // salinim merkezi (y)
+  swayAmp: 45,            // yatay salinim genligi (px)
+  swayPeriod: 5,          // salinim periyodu (s)
+  score: 2500,            // tam olum skoru
+  deathExplosions: 8,     // govde olumunde patlama sayisi
+  deathWindowMs: 600,     // ...bu sure icinde esit araliklarla
+  flashMs: 350,           // kisa ekran parlamasi
+  bodyHp: 60,             // govde can'i (anten dustuktan sonra acilir)
+  parts: {
+    pylonL:  { sprite: 'boss_pylon',   hp: 30, w: 72, h: 88 },
+    pylonR:  { sprite: 'boss_pylon',   hp: 30, w: 72, h: 88 },
+    bay:     { sprite: 'boss_bay',     hp: 40, w: 88, h: 72 },
+    antenna: { sprite: 'boss_antenna', hp: 35, w: 64, h: 64 },
+  },
+  /* Parca konumlari: govde merkezine gore ofsetler (cizim + hitbox).
+     Pilonlar iki yanda, kargo kapagi altta ortada, anten ustte ortada. */
+  partOffsets: {
+    pylonL:  { x: -100, y: -10 },
+    pylonR:  { x: 100,  y: -10 },
+    bay:     { x: 0,    y: 55 },
+    antenna: { x: 0,    y: -70 },
+  },
+  /* Atis desenleri (parca bazli). Araliklar ms; 0 = o desen yok. */
+  pylonFireMs: 1300,      // pilon top atesi: nişanlı 3'lü yelpaze
+  bayLaunchMs: 2600,      // kargo kapagi: dusman dronu firlatma araligi
+  antennaJamRadius: 180,  // anten jammer alanı yaricapi (px)
+  antennaJamMul: 0.6,     // anten menzilde ates araligi carpani
+  bulletSpeed: 300,       // boss mermisi px/s
+};
+
+/* Round 17: skimmer — limanin deniz tarafindan YANDAN giren alcak ucuslu dronu.
+   Yalnizca liman bolumunde dogar; ekrani yatay gecer, oyuncunun bandina gelince
+   BIR KEZ uclu seri atar. Paylasilan anahtar ezilmez, CONFIG genisletilir. */
+Object.assign(CONFIG, {
+  SKIMMER: {
+    pool: 6,
+    hp: 2,
+    score: 350,
+    speed: 300,          // px/s yatay
+    waveAmp: 26,         // dikey salinim genligi (px)
+    waveHz: 0.9,         // salinim frekansi
+    fireMs: 1200,        // oyuncu bandina girdikten sonraki atis kilidi
+    burst: 3,
+    burstGapMs: 120,
+    bulletSpeed: 320,
+    bandY: 90,           // oyuncu ile dikey fark bu esigin altindaysa ates acar
+    w: 72, h: 40,
+    radius: 22,
+    spawnIntervalMs: 2600,   // liman bolumunde dogus araligi
+    maxConcurrent: 2,
+  },
+});
