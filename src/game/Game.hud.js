@@ -387,6 +387,14 @@ Object.assign(Game.prototype, {
       if (this.bossState === 'warn') this._drawWarn(c);
       // bölüm karti: amblem + ad (round 8), oyun alanini karartmadan
       if (this.stageTitleT > 0) this._drawStageCard(c);
+      /* Round 20: ipucu satiri — ekranin altinda soluk, oyunu duraklatmaz. */
+      const tip = this.tipText();
+      if (tip && this.state === 'play') {
+        c.textAlign = 'center';
+        c.font = '13px monospace';
+        c.fillStyle = 'rgba(154,170,187,0.55)';
+        c.fillText(tip, CONFIG.W / 2, CONFIG.H - 16);
+      }
     }
     // boss olum ekran parlamasi (kisa)
     if (this.bossFlashT > 0) {
@@ -698,39 +706,60 @@ Object.assign(Game.prototype, {
     if (victory) {
       c.fillStyle = '#ffd24a'; c.font = 'bold 44px monospace';
       c.shadowColor = 'rgba(255,200,60,0.8)'; c.shadowBlur = 18;
-      c.fillText('VICTORY', CONFIG.W / 2, 300);
+      c.fillText('VICTORY', CONFIG.W / 2, 250);
       c.shadowBlur = 0;
-      c.fillStyle = '#fff'; c.font = '20px monospace';
-      c.fillText(`Skor: ${this.score}`, CONFIG.W / 2, 360);
-      const m = Math.floor(this.playTime / 60), s = Math.floor(this.playTime % 60);
-      c.fillText(`Süre: ${m}:${s < 10 ? '0' : ''}${s}`, CONFIG.W / 2, 392);
+    } else {
+      c.fillStyle = '#ff5540'; c.font = 'bold 36px monospace';
+      c.shadowColor = 'rgba(255,60,40,0.6)'; c.shadowBlur = 10;
+      c.fillText('OYUN BİTTİ', CONFIG.W / 2, 250);
+      c.shadowBlur = 0;
+      // Ulasilan bolum/sehir + olduren tip (mevcut satirlar korunur)
+      const st = CONFIG.STAGES[this.stageIdx];
+      c.fillStyle = '#9ab'; c.font = '16px monospace';
+      c.fillText(`Bölüm: ${st.name} (${this.stageIdx + 1}/${CONFIG.STAGES.length})`, CONFIG.W / 2, 284);
+      if (this._killingEnemyType) {
+        c.fillStyle = '#f88'; c.font = '14px monospace';
+        c.fillText(`Öldüren: ${this._killingEnemyType}`, CONFIG.W / 2, 306);
+      }
+    }
+    /* Round 20: kosu istatistik tablosu — mevcut tipografi/renk dili,
+       yeni panel yok. Etiket sol, deger sag; tek satirlik sade liste. */
+    {
+      const s = this._stats;
+      const acc = s.shots > 0 ? Math.round(Math.min(1, s.hits / s.shots) * 100) : 0;
+      const tMs = Math.round(this.simTimeMs);
+      const mm = Math.floor(tMs / 60000), ss = Math.floor((tMs % 60000) / 1000);
+      const rows = [
+        ['SKOR', String(this.score)],
+        ['ÖLDÜRME', String(s.kills)],
+        ['EN İYİ KOMBO', String(s.bestCombo)],
+        ['İSABET %', String(acc)],
+        ['SÜRE', `${mm}:${ss < 10 ? '0' : ''}${ss}`],
+      ];
+      const cx = CONFIG.W / 2, rw = 240;
+      let y = victory ? 320 : 340;
+      c.font = '18px monospace';
+      for (const [label, val] of rows) {
+        c.textAlign = 'left';
+        c.fillStyle = 'rgba(154,170,187,0.9)';
+        c.fillText(label, cx - rw / 2, y);
+        c.textAlign = 'right';
+        c.fillStyle = '#ffffff';
+        c.fillText(val, cx + rw / 2, y);
+        y += 30;
+      }
+      c.textAlign = 'center';
       // yeni rekor vurgusu
       if (this._newRecord) {
         c.fillStyle = '#7CFC00'; c.font = 'bold 22px monospace';
         c.shadowColor = 'rgba(124,252,0,0.8)'; c.shadowBlur = 12;
-        c.fillText('★ YENİ REKOR ★', CONFIG.W / 2, 440);
+        c.fillText('★ YENİ REKOR ★', CONFIG.W / 2, y + 12);
         c.shadowBlur = 0;
-      }
-    } else {
-      c.fillStyle = '#ff5540'; c.font = 'bold 36px monospace';
-      c.shadowColor = 'rgba(255,60,40,0.6)'; c.shadowBlur = 10;
-      c.fillText('OYUN BİTTİ', CONFIG.W / 2, 300);
-      c.shadowBlur = 0;
-      c.fillStyle = '#fff'; c.font = '20px monospace';
-      c.fillText(`Skor: ${this.score}`, CONFIG.W / 2, 360);
-      // En yuksek skor
-      if (this.bestScore > 0) {
+        y += 34;
+      } else if (this.bestScore > 0) {
         c.fillStyle = '#ffd24a'; c.font = '16px monospace';
-        c.fillText(`En Yüksek: ${this.bestScore}`, CONFIG.W / 2, 392);
-      }
-      // Ulasilan bolum/sehir
-      const st = CONFIG.STAGES[this.stageIdx];
-      c.fillStyle = '#9ab'; c.font = '16px monospace';
-      c.fillText(`Bölüm: ${st.name} (${this.stageIdx + 1}/${CONFIG.STAGES.length})`, CONFIG.W / 2, 424);
-      // Olduren dusman tipi
-      if (this._killingEnemyType) {
-        c.fillStyle = '#f88'; c.font = '14px monospace';
-        c.fillText(`Öldüren: ${this._killingEnemyType}`, CONFIG.W / 2, 452);
+        c.fillText(`En Yüksek: ${this.bestScore}`, CONFIG.W / 2, y + 4);
+        y += 26;
       }
     }
     // Devam et

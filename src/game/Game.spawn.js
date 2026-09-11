@@ -211,6 +211,7 @@ Object.assign(Game.prototype, {
       // bölüm 4 boss'u: VICTORY (kisa gecikmeyle)
       this._newRecord = this.score > this.bestScore;
       this.bestScore = Math.max(this.bestScore, this.score);
+      this._savePersist();   // Round 20: kalici rekor (try/catch icinde)
       this.victoryT = 0.9;
       this.menuFadeT = 0;   // yumusak gecis
       this.sound.victory();
@@ -324,6 +325,9 @@ Object.assign(Game.prototype, {
        kotaya sayilmaz ama bu yola girdigi icin komboyu besler. */
     this.comboCount += CONFIG.COMBO.step;
     this.comboT = CONFIG.COMBO.windowMs / 1000;
+    /* Round 20: kosu istatistikleri (sim adiminda, dt birikimiyle) */
+    this._stats.kills++;
+    if (this.comboCount > this._stats.bestCombo) this._stats.bestCombo = this.comboCount;
     this.killsThisStage++;
     const st = CONFIG.STAGES[this.stageIdx];
     if (this.killsThisStage >= st.quota && this.bossState === 'none') {

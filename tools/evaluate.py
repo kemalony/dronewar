@@ -2281,6 +2281,126 @@ def main():
         finally:
             pdc.close()
 
+
+        # =============================================== Round 20: istatistik + kalici rekor + ipucu
+        # --- run_stats ------------------------------------------------------------
+        # Kosu istatistikleri tutarli olmali: hits <= shots, accuracy 0..1,
+        # oldurme sayaci gercek oldurmeyle artmali, en iyi kombo kosuda kalmali.
+        pst = b.new_page(viewport={"width": 480, "height": 800})
+        try:
+            pst.goto(f"file://{INDEX}?autotest=1")
+            pst.wait_for_timeout(2500)
+            pst.evaluate("window.__game.startGame()")
+            pst.evaluate("window.__game.game.player.takeHit = function() { return false; }")
+            s0 = pst.evaluate("window.__game.state().stats")
+            pst.evaluate("window.__game.press('fire')")
+            for i in range(240):
+                pst.evaluate(f"window.__game.tick({STEP_A})")
+                if i % 40 == 0:
+                    pst.evaluate("() => window.__game.spawnEnemy('scout', 240, 120)")
+            pst.evaluate("window.__game.release('fire')")
+            st = pst.evaluate("window.__game.state()")
+            s1 = st["stats"]
+            tiers = pst.evaluate("() => CONFIG.COMBO.tiers")
+            pst.evaluate(f"() => window.__game.forceCombo({tiers[-1]})")
+            pst.evaluate(f"window.__game.tick({STEP_A})")
+            pst.evaluate("() => window.__game.forceCombo(0)")
+            pst.evaluate(f"window.__game.tick({STEP_A})")
+            s2 = pst.evaluate("window.__game.state().stats")
+            ok = (s1["shots"] > 0 and s1["hits"] <= s1["shots"]
+                  and 0 <= s1["accuracy"] <= 1 and s1["kills"] >= 1
+                  and s1["timeMs"] > 0 and s2["bestCombo"] >= tiers[-1])
+            check("run_stats", ok,
+                  f"atis={s1['shots']} isabet={s1['hits']} isabet_orani={s1['accuracy']:.2f} "
+                  f"oldurme={s1['kills']} sure={s1['timeMs']:.0f}ms "
+                  f"en_iyi_kombo={s2['bestCombo']}/{tiers[-1]} (baslangic={s0['shots']} atis)")
+        except Exception as e:
+            check("run_stats", False, f"hata: {e}")
+        finally:
+            pst.close()
+
+        # --- stats_reset_per_run --------------------------------------------------
+        # Yeni kosuda sayaclar sifirdan baslar (onceki kosunun rakamlari tasinmaz).
+        psr = b.new_page(viewport={"width": 480, "height": 800})
+        try:
+            psr.goto(f"file://{INDEX}?autotest=1")
+            psr.wait_for_timeout(2500)
+            psr.evaluate("window.__game.startGame()")
+            psr.evaluate("window.__game.press('fire')")
+            for _ in range(120):
+                psr.evaluate(f"window.__game.tick({STEP_A})")
+            psr.evaluate("window.__game.release('fire')")
+            a = psr.evaluate("window.__game.state().stats")
+            psr.evaluate("window.__game.toMenu(); window.__game.startGame()")
+            psr.evaluate(f"window.__game.tick({STEP_A})")
+            b2 = psr.evaluate("window.__game.state().stats")
+            check("stats_reset_per_run",
+                  a["shots"] > 0 and b2["shots"] == 0 and b2["kills"] == 0 and b2["timeMs"] < a["timeMs"],
+                  f"kosu1 atis={a['shots']} sure={a['timeMs']:.0f}ms -> kosu2 atis={b2['shots']} "
+                  f"oldurme={b2['kills']} sure={b2['timeMs']:.0f}ms")
+        except Exception as e:
+            check("stats_reset_per_run", False, f"hata: {e}")
+        finally:
+            psr.close()
+
+        # --- persist_best ---------------------------------------------------------
+        # Rekor localStorage'a yazilir ve sayfa yeniden yuklenince geri okunur.
+        # localStorage erisilemezse (gizli sekme / file://) oyun COKMEMELI:
+        # available=False ile bellekteki rekorla devam eder.
+        ppb = b.new_page(viewport={"width": 480, "height": 800})
+        try:
+            ppb.goto(f"file://{INDEX}?autotest=1")
+            ppb.wait_for_timeout(2500)
+            pinfo = ppb.evaluate("window.__game.state().persist")
+            ppb.evaluate("window.__game.startGame()")
+            ppb.evaluate("() => { window.__game.game.score = 12345; }")
+            ppb.evaluate("() => { const g = window.__game.game; g.player.lives = 0; }")
+            for _ in range(200):
+                ppb.evaluate(f"window.__game.tick({STEP_A})")
+                if ppb.evaluate("window.__game.state().mode") == "gameover":
+                    break
+            mode = ppb.evaluate("window.__game.state().mode")
+            ppb.reload()
+            ppb.wait_for_timeout(2500)
+            after = ppb.evaluate("window.__game.state()")
+            best = after.get("bestScore", 0)
+            avail = (after.get("persist") or {}).get("available")
+            if not pinfo or not avail:
+                # localStorage yoksa: kapi, oyunun COKMEDIGINI dogrular
+                ok = after["mode"] in ("menu", "shipselect") and pinfo is not None
+                detail = f"localStorage yok (available={avail}) — oyun cokmedi, mod={after['mode']}"
+            else:
+                ok = best >= 12345
+                detail = f"rekor yeniden yuklemeden sonra={best} (>=12345) mod_oyun_sonu={mode}"
+            check("persist_best", ok, detail)
+        except Exception as e:
+            check("persist_best", False, f"hata: {e}")
+        finally:
+            ppb.close()
+
+        # --- tips_shown -----------------------------------------------------------
+        # Ilk kosuda ipucu satiri gorunur, sure dolunca degisir/kaybolur ve
+        # oyunu DURDURMAZ (sim ilerlemeye devam eder).
+        ptp = b.new_page(viewport={"width": 480, "height": 800})
+        try:
+            ptp.goto(f"file://{INDEX}?autotest=1")
+            ptp.wait_for_timeout(2500)
+            ptp.evaluate("window.__game.startGame()")
+            seen = []
+            y0 = ptp.evaluate("window.__game.state().player")["y"]
+            for _ in range(600):
+                ptp.evaluate(f"window.__game.tick({STEP_A})")
+                t = ptp.evaluate("window.__game.state().tip")
+                if t and t.get("text") and (not seen or seen[-1] != t["text"]):
+                    seen.append(t["text"])
+            moved = ptp.evaluate("window.__game.state().stats")["timeMs"] > 0
+            check("tips_shown", len(seen) >= 2 and moved,
+                  f"gorulen_ipucu={len(seen)} ilk='{seen[0][:28] if seen else ''}' sim_ilerledi={moved}")
+        except Exception as e:
+            check("tips_shown", False, f"hata: {e}")
+        finally:
+            ptp.close()
+
         b.close()
 
     # --------------------------------------------------------------- vision

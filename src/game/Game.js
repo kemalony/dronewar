@@ -282,6 +282,17 @@ class Game {
         repairFlashT: this.repairFlashT,
         /* Round 19: muzik durumu — audio paketi motoru yazdikca state() doner. */
         music: this.sound.music ? this.sound.music.state() : null,
+        /* Round 20: kosu istatistikleri + kalici rekor + ipucu */
+        stats: (function() {
+          const s = this._stats;
+          return {
+            kills: s.kills, bestCombo: s.bestCombo, shots: s.shots, hits: s.hits,
+            accuracy: s.shots > 0 ? Math.min(1, s.hits / s.shots) : 0,
+            timeMs: Math.round(this.simTimeMs),
+          };
+        }).call(this),
+        persist: { available: this._persistAvailable, best: this.bestScore },
+        tip: { text: this.tipText(), index: this._tipIndex },
       }),
       spawnEnemy: (type, x, y) => this._spawnEnemy(type, x != null ? x : CONFIG.W / 2, y != null ? y : -40),
       spawnPowerup: (type, x, y) => this.spawnPowerup(type, x, y),
@@ -384,6 +395,8 @@ class Game {
       /* Round 18: onarim parlamasi soneumu (yalniz cizim) + kombo zamanlayicisi */
       if (this.repairFlashT > 0) this.repairFlashT -= dt;
       this._updateCombo(dt);
+      /* Round 20: ipucu sirasi — sim adiminda, girdiye/cizime dokunmaz */
+      this._updateTip(dt);
       /* Round 13: isisi — dash/roket/subLaunch harcar, sure ile sogur.
          Asiri sicaklikta kilit: recoverAt'a inene kadar yeni harcama yok. */
       const H = CONFIG.HEAT;
@@ -480,6 +493,48 @@ class Game {
     if (!m) return;
     if (typeof m.setIntensity === 'function') m.setIntensity(this._musicIntensity());
     else if (m.level !== undefined) m.level = this._musicIntensity();
+  }
+  /* ------------------------------------------------ Round 20: kalici rekor */
+  /* localStorage erisimi her zaman try/catch icinde: file:// ve gizli sekmede
+     exception atabilir; oyun bu yuzden ASLA cokmemeli. Erisilemiyorsa
+     bellekteki degerle devam edilir (_persistAvailable=false).            */
+  _loadPersist() {
+    let best = 0, runs = 0;
+    try {
+      const raw = window.localStorage.getItem(CONFIG.STATS.storageKey);
+      if (raw) {
+        const o = JSON.parse(raw);
+        if (typeof o.best === 'number' && isFinite(o.best)) best = Math.max(0, o.best);
+        if (typeof o.runs === 'number' && isFinite(o.runs)) runs = Math.max(0, o.runs);
+      }
+      this._persistAvailable = true;
+    } catch (e) { this._persistAvailable = false; }
+    return { best, runs };
+  }
+  _savePersist() {
+    try {
+      window.localStorage.setItem(CONFIG.STATS.storageKey,
+        JSON.stringify({ best: this.bestScore, runs: this._runCount }));
+    } catch (e) { /* bellek icindeki deger gecerli kalmaya devam eder */ }
+  }
+  /* Ipuclu sirasi: sim adiminda ilerler (dt birikimi), cizim/girdiye dokunmaz.
+     Yalnizca ilk CONFIG.TIPS.onlyFirstRuns kosuda calisir.                */
+  _updateTip(dt) {
+    const T = CONFIG.TIPS;
+    if (!T || !T.list || !T.list.length) return;
+    if (this._runCount >= T.onlyFirstRuns) return;
+    if (this._tipT > 0) { this._tipT -= dt; return; }
+    if (this._tipIndex < T.list.length) {
+      this._tipT = T.showMs / 1000;
+      this._tipIndex++;
+    } else {
+      this._tipT = -T.gapMs / 1000;   // bosluk: sonraki ipucuna kadar bekle
+    }
+  }
+  tipText() {
+    const T = CONFIG.TIPS;
+    if (this._tipT <= 0 || !T || !T.list) return '';
+    return T.list[this._tipIndex - 1] || '';
   }
   /* ------------------------------------------------------------- durumlar */
   /* Round 12: elle silah degistirme — sahip olunan seviyeler arasinda gecis.
@@ -606,6 +661,13 @@ class Game {
     this.victoryT = 0;
     this.playTime = 0;
     this._newRecord = false;
+    /* Round 20: kosu istatistikleri + ipucu sifirlari */
+    this._stats.kills = 0; this._stats.bestCombo = 0;
+    this._stats.shots = 0; this._stats.hits = 0;
+    this._tipT = CONFIG.TIPS.showMs / 1000;   // ilk kosuda hemen basla
+    this._tipIndex = 0;
+    this._runCount++;
+    this._savePersist();
     // Sarsinti + hit-stop sifirlari (round 9)
     this.shakeT = 0; this.shakeDur = 0; this.shakeAmp = 0;
     this.hitstopT = 0;

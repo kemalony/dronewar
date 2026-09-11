@@ -309,6 +309,24 @@ const CONFIG = {
     maxLives: 3,           // bu sayının üstüne çıkarmaz
     score: 250,            // can zaten doluysa bunun yerine puan
   },
+  /* Round 20: oyun sonu istatistikleri — oyuncu neyi ne kadar iyi yaptığını görsün. */
+  STATS: {
+    storageKey: 'dronewar_best_v1',   // localStorage anahtarı (en iyi skor + rekorlar)
+    rows: ['score', 'kills', 'bestCombo', 'accuracy', 'timeMs'],
+  },
+  /* Round 20: kısa ipuçları — ilk koşuda, oyun akışını kesmeden. */
+  TIPS: {
+    showMs: 2600,        // bir ipucu ekranda bu kadar kalır
+    gapMs: 1200,         // iki ipucu arası boşluk
+    onlyFirstRuns: 2,    // yalnızca ilk iki koşuda gösterilir
+    list: [
+      'PARMAĞINI SÜRÜKLE — DRON TAKİP EDER',
+      'DOKUNUNCA OTOMATİK ATEŞ',
+      'KUTULARI TOPLA — SİLAH SEVİYESİ ARTAR',
+      'ART ARDA VUR — SKOR ÇARPANI YÜKSELİR',
+      'HASAR ALINCA ÇARPAN SIFIRLANIR',
+    ],
+  },
   DEBUG: false, AUTOTEST: false,
 };
 
@@ -3836,6 +3854,17 @@ class Game {
     this.simTimeMs = 0;                // toplam sim suresi (ms) — rotor acisi (yalniz cizim)
     this.bestScore = 0;               // yeni rekor vurgusu
     this._newRecord = false;
+    /* Round 20: kalici rekor + kosu istatistikleri + ipuclari.
+       localStorage erisimi ASLA try/catch disinda degil (file:// / gizli
+       sekme exception atabilir) — _loadPersist/_savePersist. */
+    this._persistAvailable = false;   // localStorage okunabilir mi
+    this._runCount = 0;               // toplam baslatilan kosu (ipucu kapi)
+    this._stats = { kills: 0, bestCombo: 0, shots: 0, hits: 0 };
+    this._tipT = 0;                   // kalan sure (s): >0 ekranda, <0 bosluk
+    this._tipIndex = 0;
+    const p = this._loadPersist();
+    this.bestScore = p.best;
+    this._runCount = p.runs;
     // silah yukseltmesi + poweruplar (round 10)
     this.weaponLevel = 1;             // 1..3
     this.shieldT = 0;                 // kalkan kalan sure (s)
@@ -4043,6 +4072,17 @@ class Game {
         repairFlashT: this.repairFlashT,
         /* Round 19: muzik durumu — audio paketi motoru yazdikca state() doner. */
         music: this.sound.music ? this.sound.music.state() : null,
+        /* Round 20: kosu istatistikleri + kalici rekor + ipucu */
+        stats: (function() {
+          const s = this._stats;
+          return {
+            kills: s.kills, bestCombo: s.bestCombo, shots: s.shots, hits: s.hits,
+            accuracy: s.shots > 0 ? Math.min(1, s.hits / s.shots) : 0,
+            timeMs: Math.round(this.simTimeMs),
+          };
+        }).call(this),
+        persist: { available: this._persistAvailable, best: this.bestScore },
+        tip: { text: this.tipText(), index: this._tipIndex },
       }),
       spawnEnemy: (type, x, y) => this._spawnEnemy(type, x != null ? x : CONFIG.W / 2, y != null ? y : -40),
       spawnPowerup: (type, x, y) => this.spawnPowerup(type, x, y),
@@ -4145,6 +4185,8 @@ class Game {
       /* Round 18: onarim parlamasi soneumu (yalniz cizim) + kombo zamanlayicisi */
       if (this.repairFlashT > 0) this.repairFlashT -= dt;
       this._updateCombo(dt);
+      /* Round 20: ipucu sirasi — sim adiminda, girdiye/cizime dokunmaz */
+      this._updateTip(dt);
       /* Round 13: isisi — dash/roket/subLaunch harcar, sure ile sogur.
          Asiri sicaklikta kilit: recoverAt'a inene kadar yeni harcama yok. */
       const H = CONFIG.HEAT;
@@ -4241,6 +4283,48 @@ class Game {
     if (!m) return;
     if (typeof m.setIntensity === 'function') m.setIntensity(this._musicIntensity());
     else if (m.level !== undefined) m.level = this._musicIntensity();
+  }
+  /* ------------------------------------------------ Round 20: kalici rekor */
+  /* localStorage erisimi her zaman try/catch icinde: file:// ve gizli sekmede
+     exception atabilir; oyun bu yuzden ASLA cokmemeli. Erisilemiyorsa
+     bellekteki degerle devam edilir (_persistAvailable=false).            */
+  _loadPersist() {
+    let best = 0, runs = 0;
+    try {
+      const raw = window.localStorage.getItem(CONFIG.STATS.storageKey);
+      if (raw) {
+        const o = JSON.parse(raw);
+        if (typeof o.best === 'number' && isFinite(o.best)) best = Math.max(0, o.best);
+        if (typeof o.runs === 'number' && isFinite(o.runs)) runs = Math.max(0, o.runs);
+      }
+      this._persistAvailable = true;
+    } catch (e) { this._persistAvailable = false; }
+    return { best, runs };
+  }
+  _savePersist() {
+    try {
+      window.localStorage.setItem(CONFIG.STATS.storageKey,
+        JSON.stringify({ best: this.bestScore, runs: this._runCount }));
+    } catch (e) { /* bellek icindeki deger gecerli kalmaya devam eder */ }
+  }
+  /* Ipuclu sirasi: sim adiminda ilerler (dt birikimi), cizim/girdiye dokunmaz.
+     Yalnizca ilk CONFIG.TIPS.onlyFirstRuns kosuda calisir.                */
+  _updateTip(dt) {
+    const T = CONFIG.TIPS;
+    if (!T || !T.list || !T.list.length) return;
+    if (this._runCount >= T.onlyFirstRuns) return;
+    if (this._tipT > 0) { this._tipT -= dt; return; }
+    if (this._tipIndex < T.list.length) {
+      this._tipT = T.showMs / 1000;
+      this._tipIndex++;
+    } else {
+      this._tipT = -T.gapMs / 1000;   // bosluk: sonraki ipucuna kadar bekle
+    }
+  }
+  tipText() {
+    const T = CONFIG.TIPS;
+    if (this._tipT <= 0 || !T || !T.list) return '';
+    return T.list[this._tipIndex - 1] || '';
   }
   /* ------------------------------------------------------------- durumlar */
   /* Round 12: elle silah degistirme — sahip olunan seviyeler arasinda gecis.
@@ -4367,6 +4451,13 @@ class Game {
     this.victoryT = 0;
     this.playTime = 0;
     this._newRecord = false;
+    /* Round 20: kosu istatistikleri + ipucu sifirlari */
+    this._stats.kills = 0; this._stats.bestCombo = 0;
+    this._stats.shots = 0; this._stats.hits = 0;
+    this._tipT = CONFIG.TIPS.showMs / 1000;   // ilk kosuda hemen basla
+    this._tipIndex = 0;
+    this._runCount++;
+    this._savePersist();
     // Sarsinti + hit-stop sifirlari (round 9)
     this.shakeT = 0; this.shakeDur = 0; this.shakeAmp = 0;
     this.hitstopT = 0;
@@ -4621,6 +4712,7 @@ Object.assign(Game.prototype, {
       // bölüm 4 boss'u: VICTORY (kisa gecikmeyle)
       this._newRecord = this.score > this.bestScore;
       this.bestScore = Math.max(this.bestScore, this.score);
+      this._savePersist();   // Round 20: kalici rekor (try/catch icinde)
       this.victoryT = 0.9;
       this.menuFadeT = 0;   // yumusak gecis
       this.sound.victory();
@@ -4734,6 +4826,9 @@ Object.assign(Game.prototype, {
        kotaya sayilmaz ama bu yola girdigi icin komboyu besler. */
     this.comboCount += CONFIG.COMBO.step;
     this.comboT = CONFIG.COMBO.windowMs / 1000;
+    /* Round 20: kosu istatistikleri (sim adiminda, dt birikimiyle) */
+    this._stats.kills++;
+    if (this.comboCount > this._stats.bestCombo) this._stats.bestCombo = this.comboCount;
     this.killsThisStage++;
     const st = CONFIG.STAGES[this.stageIdx];
     if (this.killsThisStage >= st.quota && this.bossState === 'none') {
@@ -5115,6 +5210,7 @@ Object.assign(Game.prototype, {
         const res = this.carrier.hitBullet(b.x, b.y, BR);
         if (res) {
           b.active = false;
+          this._stats.hits++;   // Round 20: isabet sayaci
           if (res.type === 'bodyKilled') {
             this._onBossKilled();
             this.sound.enemyDeath();
@@ -5132,6 +5228,7 @@ Object.assign(Game.prototype, {
         const rr = BR + CONFIG.BOSS.radius;
         if (dx * dx + dy * dy <= rr * rr) {
           b.active = false;
+          this._stats.hits++;   // Round 20: isabet sayaci
           const killed = this.boss.hit();
           if (killed) {
             this._onBossKilled();
@@ -5156,6 +5253,7 @@ Object.assign(Game.prototype, {
           if (b.x >= g.x - hw && b.x <= g.x + hw &&
               b.y >= sy - hh && b.y <= sy + hh) {
             b.active = false;
+            this._stats.hits++;   // Round 20: kara hedefine isabet
             const killed = g.hit(1);
             if (killed) this._onGroundKilled(g);
             else { this.fx.hit(b.x, b.y); this.sound.groundHit ? this.sound.groundHit() : this.sound.hit(); }
@@ -5172,6 +5270,7 @@ Object.assign(Game.prototype, {
           const dx = b.x - k.x, dy = b.y - k.y;
           if (dx * dx + dy * dy <= (k.radius + BR) * (k.radius + BR)) {
             b.active = false;
+            this._stats.hits++;   // Round 20: isabet sayaci
             kHit = true;
             if (k.hit(1)) this._onSkimmerKilled(k);
             else { this.fx.hit(b.x, b.y); this.sound.hit(); }
@@ -5189,6 +5288,7 @@ Object.assign(Game.prototype, {
           const rr = BR + e.radius;
           if (dx * dx + dy * dy <= rr * rr) {
             b.active = false;
+            this._stats.hits++;   // Round 20: isabet sayaci
             const killed = e.hit();
             if (killed) {
               this._onEnemyKilled(e);   // skor + kota + patlama + powerup
@@ -5236,7 +5336,9 @@ Object.assign(Game.prototype, {
           this.sound.hit();
           if (this.player.lives <= 0) {
             this._killingEnemyType = 'düşman mermisi';
+            this._newRecord = this.score > this.bestScore;
             this.bestScore = Math.max(this.bestScore, this.score);
+            this._savePersist();   // Round 20: kalici rekor (try/catch icinde)
             this.menuFadeT = 0;   // yumusak gecis
             this.state = 'gameover';
           }
@@ -5636,6 +5738,14 @@ Object.assign(Game.prototype, {
       if (this.bossState === 'warn') this._drawWarn(c);
       // bölüm karti: amblem + ad (round 8), oyun alanini karartmadan
       if (this.stageTitleT > 0) this._drawStageCard(c);
+      /* Round 20: ipucu satiri — ekranin altinda soluk, oyunu duraklatmaz. */
+      const tip = this.tipText();
+      if (tip && this.state === 'play') {
+        c.textAlign = 'center';
+        c.font = '13px monospace';
+        c.fillStyle = 'rgba(154,170,187,0.55)';
+        c.fillText(tip, CONFIG.W / 2, CONFIG.H - 16);
+      }
     }
     // boss olum ekran parlamasi (kisa)
     if (this.bossFlashT > 0) {
@@ -5947,39 +6057,60 @@ Object.assign(Game.prototype, {
     if (victory) {
       c.fillStyle = '#ffd24a'; c.font = 'bold 44px monospace';
       c.shadowColor = 'rgba(255,200,60,0.8)'; c.shadowBlur = 18;
-      c.fillText('VICTORY', CONFIG.W / 2, 300);
+      c.fillText('VICTORY', CONFIG.W / 2, 250);
       c.shadowBlur = 0;
-      c.fillStyle = '#fff'; c.font = '20px monospace';
-      c.fillText(`Skor: ${this.score}`, CONFIG.W / 2, 360);
-      const m = Math.floor(this.playTime / 60), s = Math.floor(this.playTime % 60);
-      c.fillText(`Süre: ${m}:${s < 10 ? '0' : ''}${s}`, CONFIG.W / 2, 392);
+    } else {
+      c.fillStyle = '#ff5540'; c.font = 'bold 36px monospace';
+      c.shadowColor = 'rgba(255,60,40,0.6)'; c.shadowBlur = 10;
+      c.fillText('OYUN BİTTİ', CONFIG.W / 2, 250);
+      c.shadowBlur = 0;
+      // Ulasilan bolum/sehir + olduren tip (mevcut satirlar korunur)
+      const st = CONFIG.STAGES[this.stageIdx];
+      c.fillStyle = '#9ab'; c.font = '16px monospace';
+      c.fillText(`Bölüm: ${st.name} (${this.stageIdx + 1}/${CONFIG.STAGES.length})`, CONFIG.W / 2, 284);
+      if (this._killingEnemyType) {
+        c.fillStyle = '#f88'; c.font = '14px monospace';
+        c.fillText(`Öldüren: ${this._killingEnemyType}`, CONFIG.W / 2, 306);
+      }
+    }
+    /* Round 20: kosu istatistik tablosu — mevcut tipografi/renk dili,
+       yeni panel yok. Etiket sol, deger sag; tek satirlik sade liste. */
+    {
+      const s = this._stats;
+      const acc = s.shots > 0 ? Math.round(Math.min(1, s.hits / s.shots) * 100) : 0;
+      const tMs = Math.round(this.simTimeMs);
+      const mm = Math.floor(tMs / 60000), ss = Math.floor((tMs % 60000) / 1000);
+      const rows = [
+        ['SKOR', String(this.score)],
+        ['ÖLDÜRME', String(s.kills)],
+        ['EN İYİ KOMBO', String(s.bestCombo)],
+        ['İSABET %', String(acc)],
+        ['SÜRE', `${mm}:${ss < 10 ? '0' : ''}${ss}`],
+      ];
+      const cx = CONFIG.W / 2, rw = 240;
+      let y = victory ? 320 : 340;
+      c.font = '18px monospace';
+      for (const [label, val] of rows) {
+        c.textAlign = 'left';
+        c.fillStyle = 'rgba(154,170,187,0.9)';
+        c.fillText(label, cx - rw / 2, y);
+        c.textAlign = 'right';
+        c.fillStyle = '#ffffff';
+        c.fillText(val, cx + rw / 2, y);
+        y += 30;
+      }
+      c.textAlign = 'center';
       // yeni rekor vurgusu
       if (this._newRecord) {
         c.fillStyle = '#7CFC00'; c.font = 'bold 22px monospace';
         c.shadowColor = 'rgba(124,252,0,0.8)'; c.shadowBlur = 12;
-        c.fillText('★ YENİ REKOR ★', CONFIG.W / 2, 440);
+        c.fillText('★ YENİ REKOR ★', CONFIG.W / 2, y + 12);
         c.shadowBlur = 0;
-      }
-    } else {
-      c.fillStyle = '#ff5540'; c.font = 'bold 36px monospace';
-      c.shadowColor = 'rgba(255,60,40,0.6)'; c.shadowBlur = 10;
-      c.fillText('OYUN BİTTİ', CONFIG.W / 2, 300);
-      c.shadowBlur = 0;
-      c.fillStyle = '#fff'; c.font = '20px monospace';
-      c.fillText(`Skor: ${this.score}`, CONFIG.W / 2, 360);
-      // En yuksek skor
-      if (this.bestScore > 0) {
+        y += 34;
+      } else if (this.bestScore > 0) {
         c.fillStyle = '#ffd24a'; c.font = '16px monospace';
-        c.fillText(`En Yüksek: ${this.bestScore}`, CONFIG.W / 2, 392);
-      }
-      // Ulasilan bolum/sehir
-      const st = CONFIG.STAGES[this.stageIdx];
-      c.fillStyle = '#9ab'; c.font = '16px monospace';
-      c.fillText(`Bölüm: ${st.name} (${this.stageIdx + 1}/${CONFIG.STAGES.length})`, CONFIG.W / 2, 424);
-      // Olduren dusman tipi
-      if (this._killingEnemyType) {
-        c.fillStyle = '#f88'; c.font = '14px monospace';
-        c.fillText(`Öldüren: ${this._killingEnemyType}`, CONFIG.W / 2, 452);
+        c.fillText(`En Yüksek: ${this.bestScore}`, CONFIG.W / 2, y + 4);
+        y += 26;
       }
     }
     // Devam et

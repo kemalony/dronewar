@@ -58,6 +58,7 @@ Object.assign(Game.prototype, {
         const res = this.carrier.hitBullet(b.x, b.y, BR);
         if (res) {
           b.active = false;
+          this._stats.hits++;   // Round 20: isabet sayaci
           if (res.type === 'bodyKilled') {
             this._onBossKilled();
             this.sound.enemyDeath();
@@ -75,6 +76,7 @@ Object.assign(Game.prototype, {
         const rr = BR + CONFIG.BOSS.radius;
         if (dx * dx + dy * dy <= rr * rr) {
           b.active = false;
+          this._stats.hits++;   // Round 20: isabet sayaci
           const killed = this.boss.hit();
           if (killed) {
             this._onBossKilled();
@@ -99,6 +101,7 @@ Object.assign(Game.prototype, {
           if (b.x >= g.x - hw && b.x <= g.x + hw &&
               b.y >= sy - hh && b.y <= sy + hh) {
             b.active = false;
+            this._stats.hits++;   // Round 20: kara hedefine isabet
             const killed = g.hit(1);
             if (killed) this._onGroundKilled(g);
             else { this.fx.hit(b.x, b.y); this.sound.groundHit ? this.sound.groundHit() : this.sound.hit(); }
@@ -115,6 +118,7 @@ Object.assign(Game.prototype, {
           const dx = b.x - k.x, dy = b.y - k.y;
           if (dx * dx + dy * dy <= (k.radius + BR) * (k.radius + BR)) {
             b.active = false;
+            this._stats.hits++;   // Round 20: isabet sayaci
             kHit = true;
             if (k.hit(1)) this._onSkimmerKilled(k);
             else { this.fx.hit(b.x, b.y); this.sound.hit(); }
@@ -132,6 +136,7 @@ Object.assign(Game.prototype, {
           const rr = BR + e.radius;
           if (dx * dx + dy * dy <= rr * rr) {
             b.active = false;
+            this._stats.hits++;   // Round 20: isabet sayaci
             const killed = e.hit();
             if (killed) {
               this._onEnemyKilled(e);   // skor + kota + patlama + powerup
@@ -179,7 +184,9 @@ Object.assign(Game.prototype, {
           this.sound.hit();
           if (this.player.lives <= 0) {
             this._killingEnemyType = 'düşman mermisi';
+            this._newRecord = this.score > this.bestScore;
             this.bestScore = Math.max(this.bestScore, this.score);
+            this._savePersist();   // Round 20: kalici rekor (try/catch icinde)
             this.menuFadeT = 0;   // yumusak gecis
             this.state = 'gameover';
           }
