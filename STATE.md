@@ -1,6 +1,6 @@
 # DRONE WAR — Durum
 
-## Tur: 23 (tamamlandı — web 68 PASS / 1 FAIL; tek FAIL vision_polish = ulaşılamayan LAN API)
+## Tur: 24 (tamamlandı — web 68 PASS / 1 FAIL; tek FAIL vision_polish = ulaşılamayan LAN API)
 
 ## Tamamlanan
 - **Motor:** Sabit adım sim (120Hz akümülatör), Clock, Input, Assets, Renderer, Pool, Player, Bullet, Enemy, Boss, Game
@@ -80,11 +80,35 @@
   icinde hic yok; ses varyasyonu yalniz `Sound`'un okudugu bir sayactan — sim LCG'sine
   DOKUNMUYOR, yani Android altin izi catallanmiyor.
 
+- **Round 24 — menüler ve akış.** Akış zaten doğruymuş (`gate_ui` zinciri ve
+  çıkışsız-ekran kontrolü ilk koşumda geçti), sorun görseldi. Her arayüz bloğu artık
+  `_uiPlate` üstünde; bölüm kartı amblemi `_uiPedestal` ile arkadan aydınlatılıyor
+  (landmark PNG'leri koyu silüet, medyan parlaklık 40–124 — koyu halenin üstünde her
+  zeminde görünmezdi). Menü başlığı büyüdü + bölüm kataloğu, `shipselect` kahraman +
+  şerit düzenine geçti (girdi modeli değişmedi), `pause` koşu özeti aldı.
+  Ölçüm: yayılım menu 8→3, pause 24→5, stagecard 38→8.
+
 ## Kalan / Sonraki Turlar
 - **Vision polish (Round 13+):** min_score=7 (hedef 8), blocking değişken (hedef 0).
 - **Cila (Round 13+):** Değerlendirici bulgularıyla ince ayar.
 
 ## Orkestratör Notları — Geri Alma
+- **Arayüz okunurluğu arkadakine bağlı olmamalı.** Menüler canlı kayan şehrin üstüne
+  çiziliyor; yumuşak radyal perde ekran KENARLARINDA sıfıra iniyordu ama ölçülen bant
+  tam genişlik — yani perde tam ihtiyaç duyulan yerde yoktu. Bölüm kartı parlak
+  köprünün üstüne denk gelince başlık ve amblem kayboluyordu (yazı arkasındaki medyan
+  15↔53 arasında salınıyordu). Çözüm ölçmek değil, **yapısal**: tam genişlikte,
+  çekirdeği neredeyse opak, yalnız üst/alt kenarı yumuşayan plaka. Sızma tam olarak
+  `1 - alpha`. `tools/gate_ui.py` bunu ölçüyor: yazı arkasındaki medyan ≤45 ve beş
+  farklı kaydırma konumunda yayılım ≤12.
+- **Bu kapıyı yazarken "tepe − medyan" metriği AYIRT ETMEDİ.** Parlak arka plan, yazı
+  olmasa da tepeyi 255'e çıkarıyor. Ölçülmesi gereken şey kontrast değil arka planın
+  SIZMASI'ydı. Aynı tuzağa `player_contrast`'ta da düşülmüştü.
+- **`CONFIG.ROTOR.centers`'ta `drone_swift`/`tank`/`ghost` YOK.** `Game.hud.js:504`
+  sahnede sabit `'drone_player'` merkezlerini kullanıyor. Bakıldı: dördü de köşe
+  rotorlu ve oranları benzer olduğu için falcon'un merkezleri üçüne de oturuyor,
+  görünür kusur yok. Ama bu **kazara** doğru — geometrisi farklı bir dron eklenirse
+  sessizce bozulur. `python3 tools/rotor_overlay.py` ile bak.
 - **Karo hazirlarken kaynaktan GENIS kirpma.** 752 px'lik bir goruntuden 806 px
   isteyince PIL disariyi siyahla doldurur ve karonun iki yanina bant gomulur —
   oyunda kenarda siyah serit. Karo geometrisi DOGRUYKEN olur, o yuzden pay hesabi

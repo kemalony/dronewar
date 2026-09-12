@@ -19,69 +19,266 @@ Object.assign(Game.prototype, {
     }
     else if (this.state === 'gameover' || this.state === 'victory') { this._drawEnd(c); }
   },
+  /* =================================================================== UI TEMELI
+     Round 24. Arayuzun tamami CANLI KAYAN SEHRIN uzerine ciziliyor, yani
+     okunurluk o an arkada ne oldugunun fonksiyonuydu: ayni ekran bir karede
+     okunuyor, digerinde kayboluyordu. Olculdu (yazinin ARKASINDAKI medyan
+     parlaklik, bes kaydirma konumunda) — menu yayilim 8, pause 24, bolum karti
+     38 (tepe 53: kart parlak koprunun uzerine denk gelince baslik ve amblem
+     gorunmez oluyordu).
+
+     Sebep yumusak radyal perdeydi: EKRAN KENARINDA sifira iniyor, olcum bandi
+     ise tam genislik. Yani perde tam da lazim oldugu yerde yoktu.
+
+     Bundan sonra her arayuz blogu su uc parcadan kurulur:
+       _uiPlate   — tam genislikte, cekirdegi neredeyse mat levha (okunurluk)
+       _uiRule    — blogun sinirini gosteren, uclarda sonen ince hat (yapi)
+       _uiTracked / _uiRow / _uiStat / _uiPips — hiyerarsi
+     Okunurluk artik CIZIMIN ozelligi; arka planin tesadufu degil.
+     Hepsi yalnizca cizimdir: sim durumuna dokunmaz, `performance.now()` sadece
+     hareket icin okunur (AGENTS.md: saat yalniz cizimde).                     */
+
+  /* Tam genislikte koyu levha. y0..y1 CEKIRDEK (tam alfa); ust ve altinda
+     `feather` kadar yumusama var, boylece dikdortgen gibi yapismaz ama
+     cekirdek icinde sizinti sabittir: (1 - alfa). */
+  _uiPlate(c, y0, y1, alpha, feather) {
+    const U = CONFIG.UI;
+    const f = (feather == null) ? U.plateFeather : feather;
+    const a = (alpha == null) ? U.plateAlpha : alpha;
+    const gy0 = y0 - f, gy1 = y1 + f, span = gy1 - gy0;
+    if (span <= 0) return;
+    const s0 = f / span, col = U.plateRGB;
+    const g = c.createLinearGradient(0, gy0, 0, gy1);
+    g.addColorStop(0, `rgba(${col},0)`);
+    // yariyolda alfanin ~%22'si: dogrusal yerine yumusak giris (ease)
+    g.addColorStop(s0 * 0.5, `rgba(${col},${(a * 0.22).toFixed(3)})`);
+    g.addColorStop(s0, `rgba(${col},${a.toFixed(3)})`);
+    g.addColorStop(1 - s0, `rgba(${col},${a.toFixed(3)})`);
+    g.addColorStop(1 - s0 * 0.5, `rgba(${col},${(a * 0.22).toFixed(3)})`);
+    g.addColorStop(1, `rgba(${col},0)`);
+    c.fillStyle = g;
+    c.fillRect(0, gy0, CONFIG.W, span);
+  },
+  /* Ortada parlak, uclarda sonen 1 px yatay hat. Blok sinirini gosterir ama
+     perdeye kalinlik katmaz (dolayisiyla olcume girmez). */
+  _uiRule(c, cx, y, halfW, alpha, rgb) {
+    if (halfW <= 0) return;
+    const col = rgb || CONFIG.UI.accentRGB;
+    const g = c.createLinearGradient(cx - halfW, 0, cx + halfW, 0);
+    g.addColorStop(0, `rgba(${col},0)`);
+    g.addColorStop(0.5, `rgba(${col},${alpha})`);
+    g.addColorStop(1, `rgba(${col},0)`);
+    c.fillStyle = g;
+    c.fillRect(cx - halfW, y, halfW * 2, 1);
+  },
+  /* Harf araligi verilmis ortalanmis yazi (kicker/etiket dili). Canvas'in
+     `letterSpacing` ozelligi her motorda yok; yazi tipi monospace oldugu icin
+     elle dizmek birebir ayni sonucu verir. Menu cizimi — sicak dongu degil. */
+  _uiTracked(c, text, cx, y, spacing) {
+    const cw = c.measureText('M').width;
+    const step = cw + spacing;
+    const n = text.length;
+    let x = cx - (n * step - spacing) / 2 + cw / 2;
+    const prev = c.textAlign;
+    c.textAlign = 'center';
+    for (let i = 0; i < n; i++) { c.fillText(text[i], x, y); x += step; }
+    c.textAlign = prev;
+  },
+  /* Etiket sol / deger sag — oyun sonu tablosunun dili. Artik duraklatma
+     ekrani da ayni satiri kullaniyor (tek tipografi dili). */
+  _uiRow(c, label, val, cx, y, rw, valCol) {
+    c.textAlign = 'left';
+    c.fillStyle = CONFIG.UI.muted;
+    c.fillText(label, cx - rw / 2, y);
+    c.textAlign = 'right';
+    c.fillStyle = valCol || '#ffffff';
+    c.fillText(val, cx + rw / 2, y);
+    c.textAlign = 'center';
+  },
+  /* Ozellik cubugu: dort dronu ayni olcege oturtur, boylece sayilari
+     okumak yerine UZUNLUK karsilastirilir. */
+  _uiStat(c, label, val, frac, col, y) {
+    const cx = CONFIG.W / 2, rw = 262;
+    const bx = cx - rw / 2 + 64, bw = rw - 64 - 58;
+    c.textAlign = 'left';
+    c.font = '13px monospace';
+    c.fillStyle = CONFIG.UI.muted;
+    c.fillText(label, cx - rw / 2, y + 4);
+    c.fillStyle = 'rgba(255,255,255,0.10)';
+    c.fillRect(bx, y - 3, bw, 6);
+    c.fillStyle = col;
+    c.fillRect(bx, y - 3, bw * Math.max(0.05, Math.min(1, frac)), 6);
+    c.textAlign = 'right';
+    c.font = 'bold 13px monospace';
+    c.fillStyle = '#ffffff';
+    c.fillText(String(val), cx + rw / 2, y + 4);
+    c.textAlign = 'center';
+  },
+  /* Can: sayi yerine nokta dizisi — "kac can" bir bakista okunur. */
+  _uiPips(c, label, val, max, y) {
+    const cx = CONFIG.W / 2, rw = 262;
+    const bx = cx - rw / 2 + 64;
+    c.textAlign = 'left';
+    c.font = '13px monospace';
+    c.fillStyle = CONFIG.UI.muted;
+    c.fillText(label, cx - rw / 2, y + 4);
+    for (let i = 0; i < max; i++) {
+      c.beginPath(); c.arc(bx + 8 + i * 20, y, 5, 0, Math.PI * 2);
+      c.fillStyle = i < val ? '#6fe3ff' : 'rgba(255,255,255,0.13)';
+      c.fill();
+    }
+    c.textAlign = 'right';
+    c.font = 'bold 13px monospace';
+    c.fillStyle = '#ffffff';
+    c.fillText(String(val), cx + rw / 2, y + 4);
+    c.textAlign = 'center';
+  },
+  /* Kose yuvarlatilmis yol. `ctx.roundRect` her motorda yok; arcTo her yerde
+     var ve tahsis yapmaz. */
+  _uiRoundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  },
+  /* Onizleme kaidesi: yumusak cyan hale + ince halka. Amblem ve dron
+     siluetleri KOYU (olculdu: landmark medyan parlakligi 40..124) — mat
+     levhanin uzerinde kaybolmasinlar diye arkadan aydinlatiliyorlar.
+     Bolum kartinda amblemin gorunmemesinin ikinci sebebi buydu. */
+  _uiPedestal(c, cx, cy, r, alpha) {
+    const rgb = CONFIG.UI.accentRGB;
+    const g = c.createRadialGradient(cx, cy, r * 0.10, cx, cy, r);
+    g.addColorStop(0, `rgba(${rgb},${alpha.toFixed(3)})`);
+    g.addColorStop(0.55, `rgba(${rgb},${(alpha * 0.42).toFixed(3)})`);
+    g.addColorStop(1, `rgba(${rgb},0)`);
+    c.fillStyle = g;
+    c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = `rgba(${rgb},0.26)`;
+    c.lineWidth = 1;
+    c.beginPath(); c.arc(cx, cy, r * 0.94, 0, Math.PI * 2); c.stroke();
+  },
+  /* Kaidenin cevresinde donen iki kisa yay — "canli tarama" hissi.
+     Rotor yaylarinin YERINE gecmez: `CONFIG.ROTOR.centers` yalnizca
+     drone_player icin tanimli, yani swift/tank/ghost onizlemesi tamamen
+     olu duruyordu. Bu halka sprite geometrisinden BAGIMSIZ oldugu icin
+     dort dronda da ayni calisir ve govdeye sahte yay cizmez. */
+  _uiScanRing(c, cx, cy, r, speed) {
+    const a = performance.now() * 0.0009 * (speed || 1);
+    c.save();
+    c.strokeStyle = `rgba(${CONFIG.UI.accentRGB},0.7)`;
+    c.lineWidth = 2;
+    c.lineCap = 'round';
+    c.beginPath(); c.arc(cx, cy, r, a, a + Math.PI * 0.32); c.stroke();
+    c.beginPath(); c.arc(cx, cy, r, a + Math.PI, a + Math.PI * 1.16); c.stroke();
+    c.restore();
+  },
+  /* ====================================================================== */
   /* Round 12: dron secim ekranı. Acik dronlar parlak + badge; kilitliler
-     soluk cizim + acilis sart yazisi. Sol/sag ucte bir gezinir, orta baslatir. */
+     soluk cizim + acilis sart yazisi. Sol/sag ucte bir gezinir, orta baslatir.
+     Round 24: dort dron 120 px'lik sutunlara sikismis durumdaydi ("Hız 400",
+     "Can 3", tanim, kilit sarti hepsi ust uste). Duzen KAHRAMAN + SERIT'e
+     cevrildi: secili dron buyuk, ozellikleri ayni olcege oturan cubuklarla;
+     dort dron altta kucuk secim seridinde. Girdi modeli DEGISMEDI — sol/sag
+     ucte bir gezinir, orta baslatir (touch_drone_select bunu olcuyor). */
   _drawShipSelect(c) {
+    const U = CONFIG.UI, W = CONFIG.W, H = CONFIG.H;
     c.save();
     c.globalAlpha = this.menuFadeT;
-    this.assets.draw(c, 'city_istanbul', 0, 0, CONFIG.W, CONFIG.H);
-    c.fillStyle = 'rgba(5,7,13,0.68)'; c.fillRect(0, 0, CONFIG.W, CONFIG.H);
+    this.assets.draw(c, 'city_istanbul', 0, 0, W, H);
+    const bg = c.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, `rgba(${U.plateRGB},0.76)`);
+    bg.addColorStop(0.5, `rgba(${U.plateRGB},0.58)`);
+    bg.addColorStop(1, `rgba(${U.plateRGB},0.82)`);
+    c.fillStyle = bg; c.fillRect(0, 0, W, H);
     c.textAlign = 'center';
-    c.fillStyle = '#fff'; c.font = 'bold 34px monospace';
-    c.shadowColor = 'rgba(110,235,255,0.6)'; c.shadowBlur = 10;
-    c.fillText('DRON SEÇ', CONFIG.W / 2, 90);
+    // ---------------------------------------------------------------- baslik
+    this._uiRule(c, W / 2, 72, 190, 0.45);
+    c.font = 'bold 30px monospace';
+    c.fillStyle = '#ffffff';
+    c.shadowColor = `rgba(${U.accentRGB},0.5)`; c.shadowBlur = 12;
+    c.fillText('DRON SEÇ', W / 2, 112);
     c.shadowBlur = 0;
-    // En yuksek skor (kilitler buna gore acilir)
-    c.fillStyle = '#ffd24a'; c.font = '16px monospace';
-    c.fillText(`EN YÜKSEK: ${this.bestScore}`, CONFIG.W / 2, 122);
-    // Dort dronu yatay diz
-    const n = CONFIG.DRONES.length;
-    const cellW = CONFIG.W / n;
+    c.font = '13px monospace';
+    c.fillStyle = U.gold;
+    c.fillText(`EN YÜKSEK ${this.bestScore}`, W / 2, 136);
+
+    const idx = this.shipSelectIdx;
+    const D = CONFIG.DRONES[idx];
+    const unlocked = this._droneUnlocked(idx);
+    const now = performance.now();
+    // ------------------------------------------------------- kahraman blok
+    const HP = U.shipPlate;
+    this._uiPlate(c, HP.y0, HP.y1, HP.a);
+    const hcy = 268;
+    this._uiPedestal(c, W / 2, hcy, 98, unlocked ? 0.15 : 0.06);
+    if (unlocked) this._uiScanRing(c, W / 2, hcy, 94, 1);
+    /* Suzulme + cok hafif yalpalama: yalniz cizim (saat cizimde serbest). */
+    c.globalAlpha = this.menuFadeT * (unlocked ? 1 : 0.32);
+    c.save();
+    c.translate(W / 2, hcy + Math.sin(now * 0.0013) * 5);
+    c.rotate(Math.sin(now * 0.0009) * 0.05);
+    this.assets.draw(c, D.sprite, -74, -74, 148, 148);
+    c.restore();
+    c.globalAlpha = this.menuFadeT;
+    if (unlocked) this._drawRotorSpin(c, D.sprite, W / 2, hcy, 148 / 96, 0);
+    // ad + tek satirlik tanim
+    c.font = 'bold 26px monospace';
+    c.fillStyle = unlocked ? '#ffffff' : 'rgba(160,172,192,0.75)';
+    c.fillText(D.id.toUpperCase(), W / 2, 380);
+    c.font = '12px monospace';
+    c.fillStyle = unlocked ? `rgba(${U.accentRGB},0.9)` : 'rgba(150,160,180,0.6)';
+    c.fillText(D.desc, W / 2, 400);
+    this._uiRule(c, W / 2, 414, 120, 0.28, '255,255,255');
+    if (unlocked) {
+      /* Hiz 320..520 araliginda; cubuk 280..560 penceresine normalize edilir
+         ki en yavas dron bile bos gorunmesin, en hizli da tasmasin. */
+      this._uiStat(c, 'HIZ', D.speed, (D.speed - 280) / 280,
+                   `rgba(${U.accentRGB},0.9)`, 442);
+      this._uiPips(c, 'CAN', D.lives, 5, 470);
+    } else {
+      c.font = 'bold 15px monospace';
+      c.fillStyle = '#ffb040';
+      this._uiTracked(c, 'KİLİTLİ', W / 2, 446, 5);
+      c.font = '13px monospace';
+      c.fillStyle = 'rgba(170,182,200,0.85)';
+      c.fillText(`${D.unlock.toLocaleString()} puan gerekiyor`, W / 2, 470);
+    }
+    // ----------------------------------------------------- secim seridi (4)
+    const n = CONFIG.DRONES.length, cw = W / n;
     for (let i = 0; i < n; i++) {
-      const D = CONFIG.DRONES[i];
-      const cx = cellW * i + cellW / 2;
-      const cy = 300;
-      const unlocked = this._droneUnlocked(i);
-      const selected = (i === this.shipSelectIdx);
-      // Secili vurgu halkasi
-      if (selected && unlocked) {
-        c.strokeStyle = 'rgba(110,235,255,0.9)';
-        c.lineWidth = 3;
-        c.beginPath(); c.arc(cx, cy, 62, 0, Math.PI * 2); c.stroke();
+      const d = CONFIG.DRONES[i];
+      const ux = cw * i + cw / 2, uy = 556;
+      const on = this._droneUnlocked(i), sel = (i === idx);
+      if (sel) {
+        c.fillStyle = `rgba(${U.accentRGB},0.12)`;
+        this._uiRoundRect(c, ux - cw / 2 + 6, uy - 44, cw - 12, 102, 8); c.fill();
+        c.strokeStyle = `rgba(${U.accentRGB},0.85)`; c.lineWidth = 1.5;
+        this._uiRoundRect(c, ux - cw / 2 + 6.5, uy - 43.5, cw - 13, 101, 8); c.stroke();
       }
-      // Sprite (kilitli ise soluk)
-      c.globalAlpha = this.menuFadeT * (unlocked ? 1 : 0.3);
-      this.assets.draw(c, D.sprite, cx - 48, cy - 48, 96, 96);
+      c.globalAlpha = this.menuFadeT * (on ? (sel ? 1 : 0.78) : 0.26);
+      this.assets.draw(c, d.sprite, ux - 28, uy - 34, 56, 56);
       c.globalAlpha = this.menuFadeT;
-      // Ad
-      c.fillStyle = unlocked ? '#fff' : 'rgba(160,170,190,0.7)';
-      c.font = 'bold 18px monospace';
-      c.fillText(D.id.toUpperCase(), cx, cy + 84);
-      /* Ozellik satirlari — sutun basina 120 px var; "Hız 400 · Can 3" tek
-         satirda ~117 px tutuyordu ve komsu sutunlarla birbirine giriyordu
-         ("...Can 3Hız 520..."). Iki kisa satira bolundu ve punto kucultuldu.
-         Kilit simgesi (emoji) monospace fontta eksik karakter olarak ciziliyordu;
-         yerine duz yazi kullaniliyor. */
-      c.font = '12px monospace';
-      c.fillStyle = unlocked ? '#9fd' : 'rgba(150,160,180,0.6)';
-      c.fillText(`Hız ${D.speed}`, cx, cy + 106);
-      c.fillText(`Can ${D.lives}`, cx, cy + 122);
-      if (unlocked) {
-        c.fillStyle = '#6fe3ff';
-        c.font = '11px monospace';
-        c.fillText(D.desc, cx, cy + 142);
-      } else {
-        c.fillStyle = '#ffb040';
-        c.font = 'bold 11px monospace';
-        c.fillText('KİLİTLİ', cx, cy + 142);
-        c.font = '11px monospace';
-        c.fillText(`${D.unlock.toLocaleString()} puan`, cx, cy + 158);
+      c.font = sel ? 'bold 11px monospace' : '11px monospace';
+      c.fillStyle = on ? (sel ? '#ffffff' : 'rgba(170,182,200,0.8)')
+                       : 'rgba(150,160,180,0.55)';
+      c.fillText(d.id.toUpperCase(), ux, uy + 40);
+      if (!on) {
+        /* Kilit simgesi (emoji) monospace fontta eksik karakter olarak
+           ciziliyordu; yerine duz yazi. */
+        c.font = '9px monospace';
+        c.fillStyle = 'rgba(255,176,64,0.85)';
+        c.fillText('KİLİTLİ', ux, uy + 52);
       }
     }
-    // Dokunmatik bolge ipucu (mobil)
-    c.fillStyle = '#9ab'; c.font = '14px monospace';
-    c.fillText('Sol/Sağ: seç · Orta: başla', CONFIG.W / 2, 560);
-    c.fillText('←/→ veya A/D: gezin · Space: başla', CONFIG.W / 2, 584);
+    // ------------------------------------------------------------ rehberlik
+    this._uiRule(c, W / 2, 662, 190, 0.22, '255,255,255');
+    c.font = '13px monospace';
+    c.fillStyle = 'rgba(140,156,176,0.85)';
+    c.fillText('Sol/Sağ: seç · Orta: başla', W / 2, 692);
+    c.fillText('←/→ veya A/D: gezin · Space: başla', W / 2, 714);
     c.restore();
   },
   /* Mermiler: koyu kontur + parlak cekirdek (round 5).
@@ -326,9 +523,15 @@ Object.assign(Game.prototype, {
       /* Round 20: ipucu satiri — ekranin altinda soluk, oyunu duraklatmaz. */
       const tip = this.tipText();
       if (tip && this.state === 'play') {
+        /* Round 24: ipucu da sehrin uzerinde duruyordu ve parlak bir karonun
+           ustune denk gelince %55 alfayla kayboluyordu. Ayni ilke: kendi
+           ince levhasini tasiyor. Ekran goruntusu yolu (noHud) bu blogun
+           ICINDE, yani denetime giden kare degismez. */
+        const T = CONFIG.UI.tipPlate;
+        this._uiPlate(c, T.y0, T.y1, T.a, 18);
         c.textAlign = 'center';
         c.font = '13px monospace';
-        c.fillStyle = 'rgba(154,170,187,0.55)';
+        c.fillStyle = 'rgba(176,192,208,0.8)';
         c.fillText(tip, CONFIG.W / 2, CONFIG.H - 16);
       }
     }
@@ -388,9 +591,23 @@ Object.assign(Game.prototype, {
     c.fillText('BOSS YAKLAŞIYOR', CONFIG.W / 2, CONFIG.H * 0.42 + 28);
     c.restore();
   },
-  /* Bölüm karti: ortada simge yapı amblemi (128px), altinda BÖLÜM n + sehir adi,
-     ince bir cizgi. Yumuşak girip cikis (300ms), oyun alanini karartmaz.        */
+  /* Bölüm karti: simge yapı amblemi + BÖLÜM n + sehir adi + ilerleme noktalari.
+     Yumuşak girip cikis (300ms), oyun alanini TAMAMEN karartmaz — yalnizca
+     kartin bandi.
+
+     Round 24 — kart en kotu olcumu veren ekrandi (medyanlar [15,53,39,39,33],
+     yayilim 38, tepe 53). Iki ayri sebep vardi ve ikisi de duzeldi:
+       1) Perde YUMUSAK RADYAL'di ve ekran kenarinda sifira iniyordu; olcum
+          bandi ise tam genislik. Perde tam da lazim oldugu yerde yoktu.
+          Yerine tam genislikte, cekirdegi 0.90 alfali levha geldi: sizinti
+          0.10, yani arka planin 38'lik yayilimi ~4'e iner.
+       2) Amblem KOYU bir siluet (olculdu: landmark medyan parlakligi 40..124)
+          ve koyu bir halkanin uzerine ciziliyordu — yani koyu zeminde de,
+          parlak koprude de kayboluyordu. Artik arkadan cyan kaide ile
+          aydinlatiliyor, boylece kendi zemininden AYRISIYOR.
+     Simge yapilar hala YALNIZCA burada kullanilir; dunyaya cizilmezler.        */
   _drawStageCard(c) {
+    const U = CONFIG.UI, W = CONFIG.W;
     const total = CONFIG.STAGE_TITLE_MS / 1000;
     const t = this.stageTitleT / total;   // 1→0
     // yumusak giris/cikis: ilk ve son 300ms alfa ile son
@@ -400,44 +617,57 @@ Object.assign(Game.prototype, {
     if (a <= 0) return;
     const st = CONFIG.STAGES[this.stageIdx];
     const lmName = this.city.landmark;   // landmark_<sehir>
-    const cx = CONFIG.W / 2, cy = CONFIG.H * 0.34;
+    const cx = W / 2;
+    /* Acilis: levha merkezden disa acilir, yazi asagidan yerine oturur.
+       `stageTitleT`'den turer — saat okunmaz, sim'e dokunulmaz. */
+    const e = 1 - (1 - fadeIn) * (1 - fadeIn) * (1 - fadeIn);
+    const P = U.cardPlate;
+    const mid = (P.y0 + P.y1) / 2, half = (P.y1 - P.y0) / 2;
+    const y0 = mid - half * e, y1 = mid + half * e;
+    const dy = (1 - e) * 12;
     c.save();
     c.globalAlpha = a;
-    /* Kartin arkasina yumusak koyu panel: amblem ve yazi dort sehrin de
-       parlak gece dokusunda okunsun. Panelsiz halde kart, gecis aninda
-       yariseffafken sehre yapistirilmis gibi duruyordu. */
-    const pw = 260, ph = 250;
-    const pg = c.createRadialGradient(cx, cy + 40, 20, cx, cy + 40, pw * 0.75);
-    pg.addColorStop(0, 'rgba(4,7,14,0.78)');
-    pg.addColorStop(0.6, 'rgba(4,7,14,0.55)');
-    pg.addColorStop(1, 'rgba(4,7,14,0)');
-    c.fillStyle = pg;
-    c.fillRect(cx - pw, cy - ph * 0.6, pw * 2, ph * 1.6);
-    c.globalAlpha = a;
-    // amblem (128px) — hafif koyu halka ile okunur
+    this._uiPlate(c, y0, y1, P.a * (0.4 + 0.6 * e));
+    this._uiRule(c, cx, y0 + 8, 170 * e, 0.5);
+    this._uiRule(c, cx, y1 - 8, 170 * e, 0.3);
+    c.globalAlpha = a * e;
+    // ------------------------------------------------------------- amblem
+    const ecy = 280;
     if (lmName) {
-      c.globalAlpha = a * 0.25;
-      c.fillStyle = '#05070d';
-      c.beginPath(); c.arc(cx, cy, 74, 0, Math.PI * 2); c.fill();
-      c.globalAlpha = a;
-      this.assets.draw(c, lmName, cx - 64, cy - 64, 128, 128);
+      this._uiPedestal(c, cx, ecy - dy, 86, 0.16);
+      this.assets.draw(c, lmName, cx - 70, ecy - 70 - dy, 140, 140);
+    } else {
+      /* Liman bolumunun simge yapisi yok — yerine bolum numarasi madalyonu.
+         (Bos birakilirsa kartin ust yarisi cikplak kaliyordu.) */
+      this._uiPedestal(c, cx, ecy - dy, 72, 0.16);
+      c.textAlign = 'center';
+      c.font = 'bold 58px monospace';
+      c.fillStyle = '#ffffff';
+      c.fillText(String(this.stageIdx + 1), cx, ecy + 21 - dy);
     }
-    // ince cizgi
-    c.strokeStyle = 'rgba(255,255,255,0.5)';
-    c.lineWidth = 1;
-    c.beginPath();
-    c.moveTo(cx - 90, cy + 84); c.lineTo(cx + 90, cy + 84);
-    c.stroke();
-    // BÖLÜM n + sehir adi
+    // -------------------------------------------------------------- yazilar
     c.textAlign = 'center';
-    c.font = 'bold 20px monospace';
-    c.fillStyle = 'rgba(160,220,255,0.95)';
-    c.fillText(`BÖLÜM ${this.stageIdx + 1}`, cx, cy + 112);
-    c.font = 'bold 30px monospace';
+    c.font = '13px monospace';
+    c.fillStyle = `rgba(${U.accentRGB},0.9)`;
+    this._uiTracked(c, `BÖLÜM ${this.stageIdx + 1}`, cx, 386 + dy, 6);
+    c.font = 'bold 34px monospace';
+    c.fillStyle = 'rgba(3,6,12,0.85)';
+    c.fillText(st.name, cx + 2, 428 + dy);
+    c.shadowColor = `rgba(${U.accentRGB},0.45)`; c.shadowBlur = 14;
     c.fillStyle = '#ffffff';
-    c.shadowColor = 'rgba(0,0,0,0.8)';
-    c.shadowBlur = 10;
-    c.fillText(st.name, cx, cy + 146);
+    c.fillText(st.name, cx, 426 + dy);
+    c.shadowBlur = 0;
+    /* Ilerleme noktalari: "kacinci bolumdeyim" sorusu kartin kendisinde
+       cevaplanir (STAGES'ten turer, bolum eklenince kendiliginden uzar). */
+    const n = CONFIG.STAGES.length, gap = 18, px0 = cx - (n - 1) * gap / 2;
+    for (let i = 0; i < n; i++) {
+      const cur = (i === this.stageIdx);
+      c.beginPath();
+      c.arc(px0 + i * gap, 458 + dy, cur ? 4.5 : 3, 0, Math.PI * 2);
+      c.fillStyle = cur ? '#ffffff'
+        : (i < this.stageIdx ? `rgba(${U.accentRGB},0.7)` : 'rgba(140,156,176,0.35)');
+      c.fill();
+    }
     c.restore();
   },
   /* screenshot() icin: sehir paralaks arka plani + dron + mermiler.
@@ -572,136 +802,233 @@ Object.assign(Game.prototype, {
      donen rotorlarla kucuk onizlemesi. Sade kalir: ayni baslik, en iyi
      skor ve "DOKUN / SPACE" yonergesi. */
   _drawMenu(c) {
+    const U = CONFIG.UI, W = CONFIG.W, H = CONFIG.H;
     c.save();
     c.globalAlpha = this.menuFadeT;
     // Arka plan: kayan sehir paralaks katmani + bulutlar (gercek dunya)
     this.city.draw(c, 1);
     this.clouds.draw(c);
-    // Koyu degrade perde (alfa <= 0.55) — yazilar okunsun
-    const g = c.createLinearGradient(0, 0, 0, CONFIG.H);
-    g.addColorStop(0, 'rgba(5,7,13,0.55)');
-    g.addColorStop(0.5, 'rgba(5,7,13,0.42)');
-    g.addColorStop(1, 'rgba(5,7,13,0.55)');
+    /* Tam boy degrade perde (round 19 dili korunur). Ust ve alt biraz daha
+       koyu: baslik ve rehberlik satirlari orada oturuyor. */
+    const g = c.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, `rgba(${U.plateRGB},0.62)`);
+    g.addColorStop(0.42, `rgba(${U.plateRGB},0.40)`);
+    g.addColorStop(1, `rgba(${U.plateRGB},0.72)`);
     c.fillStyle = g;
-    c.fillRect(0, 0, CONFIG.W, CONFIG.H);
+    c.fillRect(0, 0, W, H);
     c.textAlign = 'center';
-    // Oyun adi
-    c.fillStyle = '#fff'; c.font = 'bold 44px monospace';
-    c.shadowColor = 'rgba(110,235,255,0.6)'; c.shadowBlur = 12;
-    c.fillText('DRONE WAR', CONFIG.W/2, 250);
+    const now = performance.now();
+    // ----------------------------------------------------------- baslik blogu
+    const P = U.menuPlate;
+    this._uiPlate(c, P.y0, P.y1, P.a);
+    this._uiRule(c, W / 2, P.y0 + 8, 172, 0.5);
+    c.font = '12px monospace';
+    c.fillStyle = `rgba(${U.accentRGB},0.72)`;
+    this._uiTracked(c, 'GECE DEVRİYESİ', W / 2, 166, 5);
+    /* Baslik 44 -> 54 px ve iki katmanli: once koyu bir govde (agirlik),
+       ustune beyaz + cyan hale. Ekranin genisligine gore kucuk kaliyordu. */
+    c.font = 'bold 54px monospace';
+    c.fillStyle = 'rgba(3,6,12,0.85)';
+    c.fillText('DRONE WAR', W / 2 + 2, 222);
+    c.shadowColor = `rgba(${U.accentRGB},0.55)`; c.shadowBlur = 16;
+    c.fillStyle = '#ffffff';
+    c.fillText('DRONE WAR', W / 2, 220);
     c.shadowBlur = 0;
-    // Secili dronun kucuk onizlemesi — donen rotorlarla (yalniz cizim)
+    this._uiRule(c, W / 2, 242, 150, 0.55);
+    c.save();
+    c.translate(W / 2, 242.5); c.rotate(Math.PI / 4);
+    c.fillStyle = `rgba(${U.accentRGB},0.85)`;
+    c.fillRect(-3, -3, 6, 6);
+    c.restore();
+    // Bolum katalogu: oyunun kapsamini bir satirda soyler (STAGES'ten turer)
+    c.font = '11px monospace';
+    c.fillStyle = 'rgba(150,166,184,0.78)';
+    c.fillText(U.stageCatalog, W / 2, 272);
+    // ------------------------------------------- secili dronun onizlemesi
     const D = CONFIG.DRONES.find((d) => d.id === this.selectedDrone) || CONFIG.DRONES[0];
-    const px = CONFIG.W/2, py = 350, ps = 72;
-    c.globalAlpha = this.menuFadeT * 0.9;
-    this.assets.draw(c, D.sprite, px - ps/2, py - ps/2, ps, ps);
+    const py = 400, ps = 104;
+    this._uiPedestal(c, W / 2, py, 86, 0.13);
+    this._uiScanRing(c, W / 2, py, 82, 1);
+    c.globalAlpha = this.menuFadeT * 0.95;
+    c.save();
+    c.translate(W / 2, py + Math.sin(now * 0.0013) * 5);
+    c.rotate(Math.sin(now * 0.0009) * 0.05);
+    this.assets.draw(c, D.sprite, -ps / 2, -ps / 2, ps, ps);
+    c.restore();
     c.globalAlpha = this.menuFadeT;
-    this._drawRotorSpin(c, D.sprite, px, py, ps / 96, 0);
-    // BAŞLA yonergesi (yanip sonek)
-    const blink = 0.7 + 0.3 * Math.sin(performance.now() * 0.004);
+    this._drawRotorSpin(c, D.sprite, W / 2, py, ps / 96, 0);
+    c.font = 'bold 20px monospace';
+    c.fillStyle = '#ffffff';
+    c.fillText(D.id.toUpperCase(), W / 2, 506);
+    c.font = '12px monospace';
+    c.fillStyle = `rgba(${U.accentRGB},0.85)`;
+    c.fillText(D.desc, W / 2, 526);
+    /* BASLA yonergesi artik cerceveli: dokunma cagrisi yanip sonen bir yazi
+       degil, basilabilir gorunen bir hedef. */
+    const bw = 252, bh = 48, bx = W / 2 - bw / 2, by = 560;
+    const blink = 0.72 + 0.28 * Math.sin(now * 0.004);
     c.globalAlpha = this.menuFadeT * blink;
-    c.fillStyle = '#6fe3ff'; c.font = 'bold 26px monospace';
-    c.fillText('DOKUN / SPACE', CONFIG.W/2, 440);
+    c.fillStyle = `rgba(${U.accentRGB},0.10)`;
+    this._uiRoundRect(c, bx, by, bw, bh, 8); c.fill();
+    c.strokeStyle = `rgba(${U.accentRGB},0.8)`; c.lineWidth = 1.5;
+    this._uiRoundRect(c, bx + 0.75, by + 0.75, bw - 1.5, bh - 1.5, 8); c.stroke();
+    c.fillStyle = '#6fe3ff'; c.font = 'bold 22px monospace';
+    c.fillText('DOKUN / SPACE', W / 2, by + 31);
     c.globalAlpha = this.menuFadeT;
-    // En yuksek skor
+    // En yuksek skor: etiket kucuk, SAYI buyuk (asil bilgi sayi)
     if (this.bestScore > 0) {
-      c.fillStyle = '#ffd24a'; c.font = '16px monospace';
-      c.fillText(`EN YÜKSEK: ${this.bestScore}`, CONFIG.W/2, 480);
+      c.font = '12px monospace';
+      c.fillStyle = 'rgba(150,166,184,0.8)';
+      this._uiTracked(c, 'EN YÜKSEK', W / 2, 646, 4);
+      c.font = 'bold 26px monospace';
+      c.fillStyle = U.gold;
+      c.fillText(String(this.bestScore), W / 2, 678);
     }
-    // Kisa kontrol satiri
-    c.fillStyle = '#9ab'; c.font = '14px monospace';
-    c.fillText('Ok/WASD hareket · Space/Z ates · P duraklat', CONFIG.W/2, 530);
-    c.fillText('M sessiz · Esc menu', CONFIG.W/2, 552);
+    // Kisa kontrol satiri (en altta, kendi hattiyla ayrilir)
+    this._uiRule(c, W / 2, 718, 190, 0.22, '255,255,255');
+    c.font = '13px monospace';
+    c.fillStyle = 'rgba(140,156,176,0.8)';
+    c.fillText('Ok/WASD hareket · Space/Z ates · P duraklat', W / 2, 744);
+    c.fillText('M sessiz · Esc menu', W / 2, 764);
     c.restore();
   },
+  /* Duraklatma: eskiden %35 karartma + uc satir duz yaziydi ve okunurlugu
+     arkadakine bagliydi (olculdu: medyanlar [13,36,37,34,36], yayilim 24).
+     Artik oyun alani karartilir VE baslik/ozet tam genislikte levhaya oturur
+     (toplam sizinti 0.16 * 0.50 = 0.08). Icerik de zenginlesti: kosunun o
+     anki ozeti oyun sonu tablosuyla ayni satir dilinde gosteriliyor.         */
   _drawPause(c) {
+    const U = CONFIG.UI, W = CONFIG.W, H = CONFIG.H;
     c.save();
     c.globalAlpha = this.menuFadeT;
-    // Oyun alani %35 karartilir
-    c.fillStyle = 'rgba(5,7,13,0.35)'; c.fillRect(0, 0, CONFIG.W, CONFIG.H);
+    c.fillStyle = `rgba(${U.plateRGB},${U.pauseDim})`;
+    c.fillRect(0, 0, W, H);
+    const P = U.pausePlate;
+    this._uiPlate(c, P.y0, P.y1, P.a);
     c.textAlign = 'center';
-    c.fillStyle = '#fff'; c.font = 'bold 36px monospace';
-    c.shadowColor = 'rgba(0,0,0,0.8)'; c.shadowBlur = 8;
-    c.fillText('DURAKLADI', CONFIG.W/2, CONFIG.H * 0.42);
+    this._uiRule(c, W / 2, P.y0 + 8, 168, 0.5);
+    c.font = '12px monospace';
+    c.fillStyle = `rgba(${U.accentRGB},0.72)`;
+    this._uiTracked(c, 'GÖREV BEKLEMEDE', W / 2, 294, 5);
+    c.font = 'bold 40px monospace';
+    c.fillStyle = 'rgba(3,6,12,0.85)';
+    c.fillText('DURAKLADI', W / 2 + 2, 342);
+    c.shadowColor = `rgba(${U.accentRGB},0.45)`; c.shadowBlur = 14;
+    c.fillStyle = '#ffffff';
+    c.fillText('DURAKLADI', W / 2, 340);
     c.shadowBlur = 0;
-    // Kontroller
-    c.fillStyle = '#9ab'; c.font = '15px monospace';
-    c.fillText('P / dokun: devam', CONFIG.W/2, CONFIG.H * 0.42 + 40);
-    c.fillText('Esc: menu', CONFIG.W/2, CONFIG.H * 0.42 + 64);
+    this._uiRule(c, W / 2, 362, 130, 0.5);
+    // O anki kosunun ozeti — oyun sonu tablosuyla ayni satir dili
+    const st = CONFIG.STAGES[this.stageIdx];
+    c.font = '16px monospace';
+    const rw = 240;
+    this._uiRow(c, 'SKOR', String(this.score), W / 2, 400, rw);
+    this._uiRow(c, 'BÖLÜM',
+                `${st.name} ${this.stageIdx + 1}/${CONFIG.STAGES.length}`,
+                W / 2, 426, rw);
+    this._uiRow(c, 'ÖLDÜRME', String(this._stats.kills), W / 2, 452, rw);
+    this._uiRule(c, W / 2, 470, 120, 0.2, '255,255,255');
+    c.font = '14px monospace';
+    c.fillStyle = 'rgba(140,156,176,0.85)';
+    c.fillText('P / dokun: devam', W / 2, 492);
+    c.fillText('Esc: menu', W / 2, 512);
     c.restore();
   },
+  /* Oyun sonu / zafer. Round 20'nin istatistik tablosu bu paketin en gelismis
+     duzeniydi; round 24'te diger ekranlar ona benzetildi, o da ayni levha ve
+     satir diline oturtuldu. Tek icerik degisikligi: SKOR tablodan cikip
+     kahraman sayi oldu (asil bilgi o), kalan dort satir tabloda kaldi.       */
   _drawEnd(c) {
+    const U = CONFIG.UI, W = CONFIG.W, H = CONFIG.H;
     const victory = this.state === 'victory';
     c.save();
     c.globalAlpha = this.menuFadeT;
     // arka plan: zaferde son sehir (tokyo), oyun bittiginde ulasilan sehir
     const bgCity = victory ? 'city_tokyo' : ('city_' + CONFIG.STAGES[this.stageIdx].city);
-    this.assets.draw(c, bgCity, 0, 0, CONFIG.W, CONFIG.H);
-    c.fillStyle = 'rgba(5,7,13,0.72)'; c.fillRect(0, 0, CONFIG.W, CONFIG.H);
+    this.assets.draw(c, bgCity, 0, 0, W, H);
+    const bg = c.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, `rgba(${U.plateRGB},0.78)`);
+    bg.addColorStop(0.5, `rgba(${U.plateRGB},0.62)`);
+    bg.addColorStop(1, `rgba(${U.plateRGB},0.84)`);
+    c.fillStyle = bg; c.fillRect(0, 0, W, H);
+    const P = U.endPlate;
+    this._uiPlate(c, P.y0, P.y1, P.a);
     c.textAlign = 'center';
-    if (victory) {
-      c.fillStyle = '#ffd24a'; c.font = 'bold 44px monospace';
-      c.shadowColor = 'rgba(255,200,60,0.8)'; c.shadowBlur = 18;
-      c.fillText('VICTORY', CONFIG.W / 2, 250);
-      c.shadowBlur = 0;
-    } else {
-      c.fillStyle = '#ff5540'; c.font = 'bold 36px monospace';
-      c.shadowColor = 'rgba(255,60,40,0.6)'; c.shadowBlur = 10;
-      c.fillText('OYUN BİTTİ', CONFIG.W / 2, 250);
-      c.shadowBlur = 0;
-      // Ulasilan bolum/sehir + olduren tip (mevcut satirlar korunur)
-      const st = CONFIG.STAGES[this.stageIdx];
-      c.fillStyle = '#9ab'; c.font = '16px monospace';
-      c.fillText(`Bölüm: ${st.name} (${this.stageIdx + 1}/${CONFIG.STAGES.length})`, CONFIG.W / 2, 284);
-      if (this._killingEnemyType) {
-        c.fillStyle = '#f88'; c.font = '14px monospace';
-        c.fillText(`Öldüren: ${this._killingEnemyType}`, CONFIG.W / 2, 306);
-      }
+    this._uiRule(c, W / 2, P.y0 + 8, 180, 0.45);
+    const accent = victory ? '255,210,74' : '255,85,64';
+    const st = CONFIG.STAGES[this.stageIdx];
+    c.font = '12px monospace';
+    c.fillStyle = `rgba(${accent},0.85)`;
+    this._uiTracked(c, victory ? 'GÖREV TAMAMLANDI' : 'GÖREV BAŞARISIZ', W / 2, 192, 5);
+    c.font = victory ? 'bold 46px monospace' : 'bold 40px monospace';
+    const title = victory ? 'VICTORY' : 'OYUN BİTTİ';
+    c.fillStyle = 'rgba(3,6,12,0.85)';
+    c.fillText(title, W / 2 + 2, 242);
+    c.shadowColor = `rgba(${accent},0.8)`; c.shadowBlur = 18;
+    c.fillStyle = victory ? U.gold : '#ff5540';
+    c.fillText(title, W / 2, 240);
+    c.shadowBlur = 0;
+    this._uiRule(c, W / 2, 260, 140, 0.5, accent);
+    // Baglam: nerede bitti, neye carpti
+    c.font = '14px monospace';
+    c.fillStyle = 'rgba(150,166,184,0.9)';
+    c.fillText(victory
+      ? `${CONFIG.STAGES.length} bölüm · ${st.name} düştü`
+      : `${st.name} · bölüm ${this.stageIdx + 1}/${CONFIG.STAGES.length}`, W / 2, 288);
+    if (!victory && this._killingEnemyType) {
+      c.font = '12px monospace';
+      c.fillStyle = 'rgba(255,136,136,0.9)';
+      c.fillText(`öldüren: ${this._killingEnemyType}`, W / 2, 308);
     }
-    /* Round 20: kosu istatistik tablosu — mevcut tipografi/renk dili,
-       yeni panel yok. Etiket sol, deger sag; tek satirlik sade liste. */
+    /* Round 20: kosu istatistik tablosu — etiket sol, deger sag. */
     {
       const s = this._stats;
       const acc = s.shots > 0 ? Math.round(Math.min(1, s.hits / s.shots) * 100) : 0;
       const tMs = Math.round(this.simTimeMs);
       const mm = Math.floor(tMs / 60000), ss = Math.floor((tMs % 60000) / 1000);
+      const cx = W / 2, rw = 246;
+      // Kahraman sayi: SKOR
+      c.font = '12px monospace';
+      c.fillStyle = 'rgba(150,166,184,0.8)';
+      this._uiTracked(c, 'SKOR', cx, 346, 4);
+      c.font = 'bold 46px monospace';
+      c.fillStyle = this._newRecord ? '#7CFC00' : '#ffffff';
+      c.fillText(String(this.score), cx, 392);
+      this._uiRule(c, cx, 408, 110, 0.22, '255,255,255');
       const rows = [
-        ['SKOR', String(this.score)],
         ['ÖLDÜRME', String(s.kills)],
         ['EN İYİ KOMBO', String(s.bestCombo)],
         ['İSABET %', String(acc)],
         ['SÜRE', `${mm}:${ss < 10 ? '0' : ''}${ss}`],
       ];
-      const cx = CONFIG.W / 2, rw = 240;
-      let y = victory ? 320 : 340;
-      c.font = '18px monospace';
+      let y = 438;
+      c.font = '17px monospace';
       for (const [label, val] of rows) {
-        c.textAlign = 'left';
-        c.fillStyle = 'rgba(154,170,187,0.9)';
-        c.fillText(label, cx - rw / 2, y);
-        c.textAlign = 'right';
-        c.fillStyle = '#ffffff';
-        c.fillText(val, cx + rw / 2, y);
-        y += 30;
+        c.fillStyle = 'rgba(255,255,255,0.05)';
+        c.fillRect(cx - rw / 2, y + 7, rw, 1);
+        this._uiRow(c, label, val, cx, y, rw);
+        y += 28;
       }
-      c.textAlign = 'center';
       // yeni rekor vurgusu
       if (this._newRecord) {
         c.fillStyle = '#7CFC00'; c.font = 'bold 22px monospace';
         c.shadowColor = 'rgba(124,252,0,0.8)'; c.shadowBlur = 12;
-        c.fillText('★ YENİ REKOR ★', CONFIG.W / 2, y + 12);
+        c.fillText('★ YENİ REKOR ★', cx, y + 18);
         c.shadowBlur = 0;
-        y += 34;
       } else if (this.bestScore > 0) {
-        c.fillStyle = '#ffd24a'; c.font = '16px monospace';
-        c.fillText(`En Yüksek: ${this.bestScore}`, CONFIG.W / 2, y + 4);
-        y += 26;
+        c.font = '12px monospace';
+        c.fillStyle = 'rgba(150,166,184,0.8)';
+        this._uiTracked(c, 'EN YÜKSEK', cx, y + 8, 4);
+        c.font = 'bold 20px monospace';
+        c.fillStyle = U.gold;
+        c.fillText(String(this.bestScore), cx, y + 34);
       }
     }
-    // Devam et
-    c.globalAlpha = this.menuFadeT * (0.6 + 0.4 * Math.sin(performance.now() * 0.004));
+    // Devam et: kendi kucuk levhasi ustunde, yanip sonek
+    this._uiPlate(c, 616, 660, 0.55, 26);
+    c.globalAlpha = this.menuFadeT * (0.62 + 0.38 * Math.sin(performance.now() * 0.004));
     c.fillStyle = '#9ab'; c.font = '15px monospace';
-    c.fillText('Devam etmek için SPACE / ekrana dokun', CONFIG.W / 2, 520);
+    c.fillText('Devam etmek için SPACE / ekrana dokun', W / 2, 643);
     c.restore();
   },
 });
