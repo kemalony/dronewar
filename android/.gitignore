@@ -1,0 +1,6 @@
+local.properties
+.gradle/
+build/
+*.iml
+# Benchmark sprites are copies of ../assets; tools/android/bench_assets.sh recreates them.
+bench-*/src/main/assets/sprites/

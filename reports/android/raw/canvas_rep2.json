@@ -1,0 +1,22 @@
+{
+  "backend": "canvas",
+  "frames": 900,
+  "warm_frames": 870,
+  "cold_cpu_ms": 73.161,
+  "first_frame_ms": 595.64,
+  "cpu_p50_ms": 0.885,
+  "cpu_p95_ms": 1.898,
+  "cpu_p99_ms": 3.527,
+  "cpu_max_ms": 6.473,
+  "frame_p50_ms": 16.755,
+  "frame_p95_ms": 31.804,
+  "fps": 55.452,
+  "dropped_frames": 87,
+  "touch_samples": 818,
+  "touch_p50_ms": 14.068,
+  "touch_p95_ms": 29.155,
+  "surface": "SurfaceView+Canvas",
+  "nodraw": "false",
+  "schema": 2,
+  "launch_total_ms": 566
+}

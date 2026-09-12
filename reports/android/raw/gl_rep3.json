@@ -1,0 +1,23 @@
+{
+  "backend": "gl",
+  "frames": 900,
+  "warm_frames": 870,
+  "cold_cpu_ms": 3.682,
+  "first_frame_ms": 535.331,
+  "cpu_p50_ms": 0.318,
+  "cpu_p95_ms": 0.696,
+  "cpu_p99_ms": 1.011,
+  "cpu_max_ms": 4.618,
+  "frame_p50_ms": 16.813,
+  "frame_p95_ms": 33.784,
+  "fps": 50.877,
+  "dropped_frames": 161,
+  "touch_samples": 839,
+  "touch_p50_ms": 10.098,
+  "touch_p95_ms": 27.126,
+  "surface": "SurfaceView+EGL/GLES20",
+  "draw_calls": "9",
+  "nodraw": "false",
+  "schema": 2,
+  "launch_total_ms": 311
+}
