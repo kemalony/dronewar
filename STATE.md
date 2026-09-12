@@ -72,6 +72,15 @@
 - **Cila (Round 13+):** Değerlendirici bulgularıyla ince ayar.
 
 ## Orkestratör Notları — Geri Alma
+- **`CONFIG.ROTOR.centers` sprite'la uyuşmuyorsa hiçbir kapı yakalamaz.** `rotor_spin`
+  yalnızca açının değiştiğini ve deterministik olduğunu ölçer; yayların ROTORLARIN
+  ÜSTÜNE düştüğünü ölçmez. Round 21'de ölçüldü: gunner'da 6 merkez / 4 rotor,
+  shield'da 8 merkez / 4 rotor vardı — fazla yaylar **gövdeye** çiziliyordu, ki bu
+  `visuals` kapısının "gövde çevresinde daire yok" şartının doğrudan ihlali. Sprite'lar
+  6 ve 8 rotorlu olarak yeniden üretildi. Dron sprite'ı değiştirirsen
+  `python3 tools/rotor_overlay.py` ile BAK — otomatik eşik denedim, pervaneler ince
+  olduğu için çember çoğunlukla kanatlar arasından geçiyor ve doğru hizalanmış rotorda
+  bile düşük oran veriyor. Bu bir gösterge, kapı değil.
 - **Bir kapının yeşil olması koştuğu anlamına gelmez.** `:rules:test` golden dosyayı Gradle
   **girdisi** olarak bildirmiyordu; golden değişince `FROM-CACHE` dönüp yeşil dedi ve
   sahiplik kayması üç koşum boyunca fark edilmedi. Ölçüm dosyasını her zaman `inputs.file`
