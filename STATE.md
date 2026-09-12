@@ -1,6 +1,6 @@
 # DRONE WAR — Durum
 
-## Tur: 19 (tamamlandı — 65/65 PASS)
+## Tur: 21 (tamamlandı — web 68 PASS / 1 FAIL; tek FAIL vision_polish = ulaşılamayan LAN API)
 
 ## Tamamlanan
 - **Motor:** Sabit adım sim (120Hz akümülatör), Clock, Input, Assets, Renderer, Pool, Player, Bullet, Enemy, Boss, Game
@@ -42,11 +42,51 @@
 - **Menü cilası (Round 19):** Arkada şehir kayar, üstünde degrade perde, seçili dronun dönen rotorlu önizlemesi.
 - **Zorluk eğrisi ölçümü (Round 19):** Bölüm yükü [238, 252, 293, 675, 894] — monoton artıyor.
 
+- **Round 21 — dört kırmızı kapı kapandı.** Round 20 ölçüm koşturulmadan commit edilmişti
+  (`reports/round_20.md` yok) ve kendi eklediği üç kapı kırmızıydı.
+  - `run_stats` / `stats_reset_per_run`: `Player` yalnız `game.shotsFired`'ı artırıyordu;
+    `_stats.shots` **hiçbir yerde** artmıyordu ama `_stats.hits` beş yerde bağlıydı — isabet
+    oranı gerçek payı sıfır paydaya bölüyordu. Tek giriş: `Game.addShots(n)`.
+    `bestCombo` yalnız `_onKill`'de güncelleniyordu, artık her sim adımında.
+  - `persist_best`: oyun sonu mantığı **tek bir çarpışma dalına gömülüydü**; can başka
+    yoldan sıfırlanınca oyun `play`'de asılı kalıyor, rekor hiç kaydedilmiyordu.
+    `_gameOver(cause)` eklendi, `_simStep` `lives<=0` görünce çağırıyor.
+  - `foreground_contrast` (25, eşik 60): `lighter` çekirdek her zeminde 255'e **doyuyor**,
+    yani tepe yükseltilemez — tek kaldıraç bandın medyanını düşürmek. Mermi artık kendi
+    siyah halesini taşıyor (çarpımsal). Çizim `Bullet.drawPool`'a taşındı.
+
+- **16 config anahtarı sessizce siliniyormuş (Round 21).** `units.config.js`
+  `CONFIG.JAMMER = {...}` yazıp core'un `hp`/`score`/`glitchLevel`'ını yok ediyordu.
+  Zincir: `glitchLevel` → `undefined` → `FxSystem`'de `level || 0` → **ambient glitch bu
+  oyunun ömründe bir kez bile çizilmemiş.** `Object.assign`'a çevrildi. `CARRIER`'da ise
+  bayat olan core'un kendisiydi (dizi şeklinde, `Carrier.js` hiç okumuyor) — silindi.
+
+- **Android portu (ayrı belgeler).** `docs/adr-001-android-platform.md` (ölçülmüş platform
+  kararı: OpenGL ES 2.0) ve `docs/android-architecture.md` (modül haritası, `FrameSink`
+  dikişi, parity yöntemi). Modüller: `:rules` (596 sabit bit-bit), `:core-sim` (oyuncu
+  fiziği, altın iz 720/720), `:harness` (kapılar), `:game` (emülatörde oynanabilir dilim).
+  Kapılar: `tools/android/gate_*.sh`, yeniden senkron: `tools/android/resync_golden.sh`.
+
 ## Kalan / Sonraki Turlar
 - **Vision polish (Round 13+):** min_score=7 (hedef 8), blocking değişken (hedef 0).
 - **Cila (Round 13+):** Değerlendirici bulgularıyla ince ayar.
 
 ## Orkestratör Notları — Geri Alma
+- **Bir kapının yeşil olması koştuğu anlamına gelmez.** `:rules:test` golden dosyayı Gradle
+  **girdisi** olarak bildirmiyordu; golden değişince `FROM-CACHE` dönüp yeşil dedi ve
+  sahiplik kayması üç koşum boyunca fark edilmedi. Ölçüm dosyasını her zaman `inputs.file`
+  ile bildir. Aynı tuzak `:harness`'ta fark edilip çözülmüştü.
+- **Ezme, çift anahtardan daha sinsidir.** `CONFIG.X = {...}` kardeş anahtarları siler;
+  geriye çift kalmaz, yani çift-anahtar denetimi göremez — kanıt anahtarla birlikte yok
+  olur. `tools/dump_config.js` artık her dosyadan sonra kaybolan anahtarları raporluyor.
+- **Sahiplik "son yazan"dır, "ilk görünen" değil.** İlk-görünen ataması, ezilen bir
+  anahtarda değeri çöpe giden dosyayı sahip gösterir.
+- **Çevrimdışı kontrast ölçümüne güvenme.** Sprite'ları ham şehir karosu üstünde ölçmek
+  dronu değil şehri ölçüyor: dron KOYMADAN yapılan kontrol koşumu da aynı ~170'i veriyor.
+  Sanat kararı yalnız oyun içi `evaluate.py` ile verilir.
+- **`foreground_contrast` bir kez soğuk başlangıçta 145 verdi, kararlı değeri 25.** İlk
+  koşum 10 mermi örnekledi, sonrakiler 11. Tek koşuma dayanarak "kapı gürültülü" deme;
+  üçüncü koşum kararı verir.
 - **`audio.config.js` `CONFIG.MUSIC`'i EZMEZ, genişletir.** `Object.assign(CONFIG, {MUSIC:{...}})` yazılınca core'un `intensity` anahtarları silindi ve oyun ilk sim adımında `TypeError` ile çöktü.
 - **Vision puanı oyunun değil, modelin günlük salınımının ölçüsü:** aynı build iki ardışık koşuda medyan 8 ve 7 aldı. Kapı artık blocking==0 ve (medyan≥8 veya medyan≥7 + ölçülen kontrast kapıları yeşil). Bunu tek sayıya geri çevirme.
 - **Müzik açılışta başlar** (`Game.start()` → `_startMusic()`), yalnız `startGame()`'de başlatılırsa menü sessiz kalır.
