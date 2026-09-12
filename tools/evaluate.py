@@ -16,6 +16,7 @@ Assertion'lar:
 Cikti: her assertion PASS/FAIL + ozet. Cikis kodu 0 = tumu PASS.
 """
 import json
+import os
 import pathlib
 import statistics
 import sys
@@ -106,7 +107,11 @@ def main():
     expected_assets = len(json.loads(MANIFEST.read_text()).get("sprites", []))
 
     with sync_playwright() as p:
-        b = p.chromium.launch()
+        # Bu makinede Playwright'in kendi Chromium'u yok (indirme ENOSPC ile dustu);
+        # PW_CHANNEL=chrome ile sistemdeki Chrome surulur. Bos birakilirsa eski
+        # davranis aynen korunur.
+        _ch = os.environ.get("PW_CHANNEL", "")
+        b = p.chromium.launch(channel=_ch) if _ch else p.chromium.launch()
         pg = b.new_page(viewport={"width": 480, "height": 800})
         console_msgs = []
         page_errors = []

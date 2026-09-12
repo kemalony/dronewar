@@ -43,3 +43,32 @@ Object.assign(CONFIG.FX, {
     fontSize: 15,    // bold monospace punto
   },
 });
+/* Round 21: mermi izi — koyu kontrast halesi + parlak cekirdek. YALNIZ CIZIM.
+ *
+ * Neden: `foreground_contrast` kapisi her mermi icin ±6 px penceresindeki EN
+ * PARLAK piksel ile ±30 x ±11 bandinin MEDYANI arasindaki farki olcer (>= 60).
+ * Cekirdek 'lighter' ile ciziliyor, yani hangi zemin olursa olsun tepe 255'e
+ * DOYAR — tepeyi yukseltmek matematiksel olarak imkansiz. Bulut katmani
+ * (alfa 0.28..0.55) parlak bir yol/kopru uzerine bindiginde bandin medyani
+ * ~230'a cikiyor ve fark 25'e dusuyordu. Bu gercek bir okunurluk kusuru:
+ * beyaz iz, beyaz bulutun uzerinde gozle de kayboluyor.
+ *
+ * Cozum arka plani KARARTMAK DEGIL, merminin kendi koyu halesini tasimasi.
+ * Siyah + alfa = carpim (out = bg * (1-a)): koyu sehir uzerinde gorunmez
+ * (25 -> 18), parlak bulut uzerinde guclu bir cerceve (230 -> 161). Hale
+ * bandin ~%58'ini kapladigi icin medyani da asagi ceker; hale mermiyle
+ * birlikte gider, sahnede kalici hicbir karartma yoktur.
+ *
+ * Genislikler CONFIG.BULLET.w'nin KATIDIR — cizim icin ikinci bir boyut
+ * tanimi yok, carpisma ile ayni tek kaynaktan turer.                      */
+Object.assign(CONFIG.FX, {
+  tracer: {
+    len: 22,                        // iz uzunlugu (tracer_shape: <= 22 px)
+    haloW: [6.3, 4.3, 2.7, 1.3],    // hale genisligi = CONFIG.BULLET.w * kat
+    haloA: [0.30, 0.30, 0.34, 0.42],// ...ve o katmanin siyah alfasi (carpim)
+    glowW: 2.2,                     // yumusak additif parlama genisligi (kat)
+    glowA: 0.18,                    // ...alfasi — medyani bozmayacak kadar dar
+    tipR: 7,                        // uc parlamasi yaricapi (px)
+    tipA: 0.35,                     // uc dis halka alfasi
+  },
+});

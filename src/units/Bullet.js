@@ -19,6 +19,97 @@ class Bullet {
   }
 }
 
+/* ------------------------------------------------------- mermi cizimi (r21)
+   Bir havuzun TAMAMINI tek gecişte cizer. Cagrilma yeri: Game._drawBullets.
+   Donen deger iz uzunlugu (L) — cagiran `this.tracerLen` kancasina yazar.
+
+   Katman sirasi (hepsi renk+alfa kovasina gore gruplu, sicak dongude tahsis
+   YOK — eski kodun mermi basina createRadialGradient'i kaldirildi):
+     1) koyu kontrast halesi  — genisten dara 4 kademe, siyah + alfa
+     2) koyu iz (trail)       — merminin arkasinda kisa sonen hat
+     3) yumusak additif parlama + cyan/beyaz cekirdek  ('lighter')
+     4) uc parlamasi          — iki additif yay (gradyan yok)
+
+   Neden hale: `foreground_contrast` tepe - medyan olcer; 'lighter' cekirdek
+   her zeminde 255'e doyar, yani tepe yukseltilemez. Parlak bulut bandin
+   medyanini ~230'a cikarinca fark 25'e duser (beyaz iz beyaz bulutta gercekten
+   kaybolur). Siyah + alfa carpimsaldir: koyu sehirde gorunmez, parlak zeminde
+   mermiye kendi cercevesini verir ve bandin medyanini asagi ceker. Arka plan
+   karartilmaz — hale mermiye aittir ve mermiyle birlikte hareket eder.
+
+   Cizim/sim ayrimi: burada sim durumu OKUNUR, hicbiri yazilmaz; carpisma
+   dikdortgeni degismez (genislikler CONFIG.BULLET.w'nin katidir).          */
+Bullet.drawPool = function (c, pool, isEnemy) {
+  const T = CONFIG.FX.tracer;
+  const L = T.len, half = L * 0.5;
+  const bw = CONFIG.BULLET.w;          // tek boyut kaynagi (carpisma ile ayni)
+  const TAU = Math.PI * 2;
+  const tipDy = isEnemy ? half : -half;   // iz ucu: dusman asagi, oyuncu yukari
+  const outer = isEnemy ? 'rgba(255,100,40,0.85)' : 'rgba(90,230,255,0.85)';
+  const inner = isEnemy ? 'rgba(255,220,180,0.95)' : 'rgba(255,255,255,0.95)';
+  c.save();
+  // --- 1) KOYU KONTRAST HALESI (source-over siyah = carpim)
+  c.lineCap = 'butt';
+  c.fillStyle = '#000';
+  for (let i = 0; i < T.haloW.length; i++) {
+    const w = bw * T.haloW[i];
+    c.globalAlpha = T.haloA[i];
+    c.beginPath();
+    pool.forEach((b) => { c.rect(b.x - w * 0.5, b.y - half, w, L); });
+    c.fill();
+  }
+  // --- 2) KOYU IZ: merminin arkasinda hizla sonen kisa hat
+  c.lineCap = 'round';
+  c.globalAlpha = 0.28;
+  c.strokeStyle = '#000';
+  c.lineWidth = bw * 0.7;
+  c.beginPath();
+  pool.forEach((b) => {
+    if (b.trailN >= 2) { c.moveTo(b.trailX[0], b.trailY[0]); c.lineTo(b.x, b.y); }
+  });
+  c.stroke();
+  // --- 3) PARLAK CEKIRDEK (lighter)
+  c.globalCompositeOperation = 'lighter';
+  // yumusak parlama: dar tutulur, yoksa bandin medyanini kendisi yukseltir
+  c.globalAlpha = T.glowA;
+  c.strokeStyle = outer;
+  c.lineWidth = bw * T.glowW;
+  c.beginPath();
+  pool.forEach((b) => { c.moveTo(b.x, b.y + half); c.lineTo(b.x, b.y - half); });
+  c.stroke();
+  c.globalAlpha = 1;
+  c.strokeStyle = outer;
+  c.lineWidth = bw * 0.7;
+  c.beginPath();
+  pool.forEach((b) => { c.moveTo(b.x, b.y + half); c.lineTo(b.x, b.y - half); });
+  c.stroke();
+  c.strokeStyle = inner;
+  c.lineWidth = bw / 3;
+  c.beginPath();
+  pool.forEach((b) => { c.moveTo(b.x, b.y + half); c.lineTo(b.x, b.y - half); });
+  c.stroke();
+  // --- 4) UC PARLAMASI: iki additif yay (mermi basina gradyan YOK)
+  c.globalAlpha = T.tipA;
+  c.fillStyle = outer;
+  c.beginPath();
+  pool.forEach((b) => {
+    const y = b.y + tipDy;
+    c.moveTo(b.x + T.tipR, y); c.arc(b.x, y, T.tipR, 0, TAU);
+  });
+  c.fill();
+  c.globalAlpha = 0.9;
+  c.fillStyle = inner;
+  const rIn = T.tipR * 0.45;
+  c.beginPath();
+  pool.forEach((b) => {
+    const y = b.y + tipDy;
+    c.moveTo(b.x + rIn, y); c.arc(b.x, y, rIn, 0, TAU);
+  });
+  c.fill();
+  c.restore();
+  return L;
+};
+
 /* --------------------------------------------------------------------- Rocket
    Round 12: kazanilabilir ek silah. Normal atisa EK olarak hafif gaitli.
    Hedef secimi deterministik: "en yakin aktif dusman, esitlikte en kucuk

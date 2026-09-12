@@ -195,6 +195,36 @@ Sınır şu: ajan **dosya arayarak** keşfe çıkmaz. Okuyacağı dosyaların li
 `AGENTS.md` ve görev dosyasında adlandırılmıştır; liste dışına çıkmak için
 `reports/requests/` üzerinden sorması gerekir.
 
+## 6c. Referansın kendisi yeşil değil (2026-09-12'de ölçüldü)
+
+Devir planı "referans uygulama web sürümü, **115/115 kapı yeşil**" diyor ve ADR-001
+o cümlenin üstüne yazıldı. **Ölçüldü, doğru değil.** `tools/evaluate.py` bu makinede
+(sistem Chrome'u, `PW_CHANNEL=chrome`) üst üste üç koşumda:
+
+```
+EVALUATE: 65 PASS, 4 FAIL / 69
+  FAIL: foreground_contrast   en_zayif_mermi_kontrasti=25 (esik >=60)
+  FAIL: run_stats             atis=0
+  FAIL: stats_reset_per_run   atis=0
+  FAIL: persist_best          rekor=0
+  (+ vision_polish: VISION_API LAN adresi bu makineden ulasilamiyor)
+```
+
+İlk koşumda `foreground_contrast` 145 (PASS) çıktı; sonraki iki koşum 25, 25.
+Aykırı olan ilk koşumdu (10 mermi örneklendi, diğerlerinde 11) — kapı gürültülü
+değil, HEAD kırmızı.
+
+`reports/` içinde `round_20.md` **yok**. Son commit ("Round 20: koşu istatistikleri,
+kalıcı rekor, ipuçları + ölçüm kapıları") ölçüm koşturulmadan atılmış ve kırmızı
+olanların üçü tam olarak o turun eklediği özellikler.
+
+**Port için anlamı:** `parity` kapısı web ne yapıyorsa onu üretir — hatalarıyla
+birlikte. `atis=0` portlanırsa isabet oranı, kombo ve rekor da yanlış portlanır.
+Sıra şu olmalı: önce web'deki kırmızılar düzeltilir, sonra o davranışın altın izi
+kaydedilir. Kırmızı bir davranışın izini kaydetmek, hatayı sözleşmeye çevirir.
+
+Ölçümü tekrarlamak: `PW_CHANNEL=chrome .venv-mac/bin/python tools/evaluate.py`
+
 ## 7. En büyük üç risk
 
 1. **İz çatallanıyor ve sebebi bulunamıyor.** *(R1'de gerçekleşti ve önlem işe yaradı:

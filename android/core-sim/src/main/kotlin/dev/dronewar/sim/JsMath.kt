@@ -67,6 +67,15 @@ internal object JsMath {
         return StrictMath.sqrt(sum) * max
     }
 
+    /** `Math.max(a, b)` with JS/IEEE semantics; the mirror of [min]. */
+    fun max(a: Double, b: Double): Double {
+        if (a != a || b != b) return Double.NaN
+        if (a > b) return a
+        if (b > a) return b
+        // Equal, which includes +0.0 vs -0.0: Math.max must prefer +0.0.
+        return if (StrictMath.copySign(1.0, a) > 0.0) a else b
+    }
+
     /** `Math.pow`. Kept here so every math call in the module reads from one place. */
     fun pow(base: Double, exponent: Double): Double = StrictMath.pow(base, exponent)
 

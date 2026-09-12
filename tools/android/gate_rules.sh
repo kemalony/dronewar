@@ -99,6 +99,27 @@ else
   fail "config TOMLs not found — cannot test the ownership gate"
 fi
 
+say "AC-7  hicbir config anahtari sessizce silinmemis"
+# Yazmak: CONFIG.X = {...}  yerine  Object.assign(CONFIG.X, {...})
+# Birincisi nesneyi komple degistirir ve baska bir paketin oraya koydugu kardes
+# anahtarlari SILER. Geriye cift anahtar kalmaz -- kanit anahtarla birlikte yok
+# olur -- bu yuzden cift-anahtar denetimi bunu goremez. Bu projede iki kez oldu:
+# once CONFIG.SUBDRONE, sonra CONFIG.JAMMER.
+DESTROYED=$(python3 -c "
+import json
+d = json.load(open('$GOLDEN'))
+for x in d.get('destroyed', []):
+    print(f\"{x['key']}  ({x['definedBy']} -> {x['destroyedBy']})\")
+")
+if [ -z "$DESTROYED" ]; then
+  pass "silinen anahtar yok"
+else
+  N=$(echo "$DESTROYED" | grep -c .)
+  fail "$N config anahtari butun-nesne atamasiyla silinmis"
+  echo "$DESTROYED" | head -6 | sed 's/^/        /'
+  [ "$N" -gt 6 ] && echo "        ... ve $((N - 6)) tane daha"
+fi
+
 say "RESULT"
 if [ "$FAILURES" -eq 0 ]; then
   echo "GATE GREEN"

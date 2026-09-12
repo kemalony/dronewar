@@ -139,17 +139,10 @@ const CONFIG = {
     fireSlowMul: 0.6,                       // menzilde birincil ates araligi carpani
     glitchLevel: 0.5,                       // cizim glitch yogunlugu (0..1)
   },
-  /* Round 14: cok asamali boss — bolum 4'te Tokyo boss'unun yerine.
-     Parcalar sirayla yok edilir; govde son parca.                      */
-  CARRIER: {
-    bodyHp: 40,                             // govde can
-    parts: [
-      { id: 'pylonL',   sprite: 'boss_pylon',   hp: 30 },
-      { id: 'pylonR',   sprite: 'boss_pylon',   hp: 30 },
-      { id: 'bay',      sprite: 'boss_bay',     hp: 45 },
-      { id: 'antenna',  sprite: 'boss_antenna', hp: 60 },
-    ],
-  },
+  /* Round 14: cok asamali boss (CARRIER) BURADA TANIMLI DEGIL.
+     Tanim units/units.config.js icindedir: Carrier.js parcalari id'ye gore
+     anahtarlanmis bir nesne olarak okur, buradaki dizi sekli olu koddu ve
+     units'in komple atamasi tarafindan zaten siliniyordu.                */
   /* Round 16: kara hedefleri. YALNIZCA ground:true olan bölümde doğar.
      Kara hedefi zemine ÇİVİLİDİR: dünya koordinatında durur, ekran konumu
      city.dist'ten türetilir — zeminle birebir aynı hızda kayar (uçan bina olmaz). */
@@ -361,7 +354,7 @@ Object.assign(CONFIG.MUSIC, {
  *
  * Neden ayri dosya: src/core/CONFIG.js yalnizca core ajaninindir.
  * build_order.json icinde core/CONFIG.js'ten SONRA siralanir.            */
-CONFIG.SUBDRONE = {
+CONFIG.SUBDRONE = Object.assign(CONFIG.SUBDRONE || {}, {
   pool: 2,                // havuz boyutu (2 mini refakatci)
   offset: 34,             // oyuncunun yanindaki mesafe (px)
   followSmooth: 10,       // yumusak gecikme (1/s) — kritik sonumlu yaklasim
@@ -370,11 +363,17 @@ CONFIG.SUBDRONE = {
   kamikazeSpeed: 620,     // px/s — kamikaze modunda hiza
   kamikazeDamage: 6,      // carpisma hasari
   size: 48,               // cizim boyutu (manifest sub_drone 48x48)
-};
+});
 /* Jammer dronu: ateş ETMEZ; ekranda kaldigi surece oyuncuyu zayiflatir.
  * Oyuncu radius icindeyken birincil ates araligi fireSlowMul kadar yavaslar.
- * Havuz 4, onceden ayrilmis; Math.random YASAK (LCG). */
-CONFIG.JAMMER = {
+ * Havuz 4, onceden ayrilmis; Math.random YASAK (LCG).
+ *
+ * DIKKAT: `CONFIG.JAMMER = {...}` YAZMA — core/CONFIG.js bu anahtara
+ * hp / score / glitchLevel koyuyor; komple atama o ucunu de siliyordu.
+ * glitchLevel silindigi icin Game._updateJammerFx() undefined gonderiyor,
+ * FxSystem.setAmbientGlitch `level || 0` ile 0'a cekiyor ve jammer menzil
+ * glitch'i hic cizilmiyordu. Paylasilan anahtar EZILMEZ, genisletilir. */
+Object.assign(CONFIG.JAMMER, {
   pool: 4,                // havuz boyutu
   speed: 55,              // px/s — yavas inis
   hoverY: CONFIG.H * 0.30,   // ekranin ust yarısında kalmaya calisir
@@ -384,13 +383,16 @@ CONFIG.JAMMER = {
   fireSlowMul: 0.5,       // menzil icinde ates araligi carpani (yavaslatma)
   size: 80,               // cizim boyutu (manifest drone_jammer 80x72)
   ringPulse: 1.6,         // nabiz halka frekansi (rad/s) — yalniz cizim
-};
+});
 /* Cok asamali tasici boss (bolum 4 / Tokyo): parcalar sirayla cokertilir.
  * Sira: iki yan pilon -> kargo kapagi -> komuta anteni -> govde.
  * Govde ancak anten dustuktan sonra hasar alir. Her parcain kendi sprite'i
  * ve can'i var; dusen parca patlar ve o parcain saldirisi durur.
- * Tum zamanlama sim zamanina bagli; performance.now() YOK. */
-CONFIG.CARRIER = {
+ * Tum zamanlama sim zamanina bagli; performance.now() YOK.
+ * CARRIER'in TEK tanimi burasidir: core/CONFIG.js'teki eski blok (bodyHp 40 +
+ * dizi seklinde parts) Carrier.js'in okudugu sekle uymuyordu, olu koddu ve
+ * silindi. game.config.js bunun uzerine Object.assign ile ekleme yapar. */
+CONFIG.CARRIER = Object.assign(CONFIG.CARRIER || {}, {
   entryMs: 1800,          // giris inişi (ustten -> hoverY)
   hoverY: 150,            // salinim merkezi (y)
   swayAmp: 45,            // yatay salinim genligi (px)
@@ -420,7 +422,7 @@ CONFIG.CARRIER = {
   antennaJamRadius: 180,  // anten jammer alanı yaricapi (px)
   antennaJamMul: 0.6,     // anten menzilde ates araligi carpani
   bulletSpeed: 300,       // boss mermisi px/s
-};
+});
 
 /* Round 17: skimmer — limanin deniz tarafindan YANDAN giren alcak ucuslu dronu.
    Yalnizca liman bolumunde dogar; ekrani yatay gecer, oyuncunun bandina gelince
@@ -514,6 +516,35 @@ Object.assign(CONFIG.FX, {
     rise: 26,        // yukari suzulme mesafesi (px)
     fadeStart: 0.7,  // son %30'da alfa 1→0
     fontSize: 15,    // bold monospace punto
+  },
+});
+/* Round 21: mermi izi — koyu kontrast halesi + parlak cekirdek. YALNIZ CIZIM.
+ *
+ * Neden: `foreground_contrast` kapisi her mermi icin ±6 px penceresindeki EN
+ * PARLAK piksel ile ±30 x ±11 bandinin MEDYANI arasindaki farki olcer (>= 60).
+ * Cekirdek 'lighter' ile ciziliyor, yani hangi zemin olursa olsun tepe 255'e
+ * DOYAR — tepeyi yukseltmek matematiksel olarak imkansiz. Bulut katmani
+ * (alfa 0.28..0.55) parlak bir yol/kopru uzerine bindiginde bandin medyani
+ * ~230'a cikiyor ve fark 25'e dusuyordu. Bu gercek bir okunurluk kusuru:
+ * beyaz iz, beyaz bulutun uzerinde gozle de kayboluyor.
+ *
+ * Cozum arka plani KARARTMAK DEGIL, merminin kendi koyu halesini tasimasi.
+ * Siyah + alfa = carpim (out = bg * (1-a)): koyu sehir uzerinde gorunmez
+ * (25 -> 18), parlak bulut uzerinde guclu bir cerceve (230 -> 161). Hale
+ * bandin ~%58'ini kapladigi icin medyani da asagi ceker; hale mermiyle
+ * birlikte gider, sahnede kalici hicbir karartma yoktur.
+ *
+ * Genislikler CONFIG.BULLET.w'nin KATIDIR — cizim icin ikinci bir boyut
+ * tanimi yok, carpisma ile ayni tek kaynaktan turer.                      */
+Object.assign(CONFIG.FX, {
+  tracer: {
+    len: 22,                        // iz uzunlugu (tracer_shape: <= 22 px)
+    haloW: [6.3, 4.3, 2.7, 1.3],    // hale genisligi = CONFIG.BULLET.w * kat
+    haloA: [0.30, 0.30, 0.34, 0.42],// ...ve o katmanin siyah alfasi (carpim)
+    glowW: 2.2,                     // yumusak additif parlama genisligi (kat)
+    glowA: 0.18,                    // ...alfasi — medyani bozmayacak kadar dar
+    tipR: 7,                        // uc parlamasi yaricapi (px)
+    tipA: 0.35,                     // uc dis halka alfasi
   },
 });
 
@@ -2430,6 +2461,97 @@ class Bullet {
   }
 }
 
+/* ------------------------------------------------------- mermi cizimi (r21)
+   Bir havuzun TAMAMINI tek gecişte cizer. Cagrilma yeri: Game._drawBullets.
+   Donen deger iz uzunlugu (L) — cagiran `this.tracerLen` kancasina yazar.
+
+   Katman sirasi (hepsi renk+alfa kovasina gore gruplu, sicak dongude tahsis
+   YOK — eski kodun mermi basina createRadialGradient'i kaldirildi):
+     1) koyu kontrast halesi  — genisten dara 4 kademe, siyah + alfa
+     2) koyu iz (trail)       — merminin arkasinda kisa sonen hat
+     3) yumusak additif parlama + cyan/beyaz cekirdek  ('lighter')
+     4) uc parlamasi          — iki additif yay (gradyan yok)
+
+   Neden hale: `foreground_contrast` tepe - medyan olcer; 'lighter' cekirdek
+   her zeminde 255'e doyar, yani tepe yukseltilemez. Parlak bulut bandin
+   medyanini ~230'a cikarinca fark 25'e duser (beyaz iz beyaz bulutta gercekten
+   kaybolur). Siyah + alfa carpimsaldir: koyu sehirde gorunmez, parlak zeminde
+   mermiye kendi cercevesini verir ve bandin medyanini asagi ceker. Arka plan
+   karartilmaz — hale mermiye aittir ve mermiyle birlikte hareket eder.
+
+   Cizim/sim ayrimi: burada sim durumu OKUNUR, hicbiri yazilmaz; carpisma
+   dikdortgeni degismez (genislikler CONFIG.BULLET.w'nin katidir).          */
+Bullet.drawPool = function (c, pool, isEnemy) {
+  const T = CONFIG.FX.tracer;
+  const L = T.len, half = L * 0.5;
+  const bw = CONFIG.BULLET.w;          // tek boyut kaynagi (carpisma ile ayni)
+  const TAU = Math.PI * 2;
+  const tipDy = isEnemy ? half : -half;   // iz ucu: dusman asagi, oyuncu yukari
+  const outer = isEnemy ? 'rgba(255,100,40,0.85)' : 'rgba(90,230,255,0.85)';
+  const inner = isEnemy ? 'rgba(255,220,180,0.95)' : 'rgba(255,255,255,0.95)';
+  c.save();
+  // --- 1) KOYU KONTRAST HALESI (source-over siyah = carpim)
+  c.lineCap = 'butt';
+  c.fillStyle = '#000';
+  for (let i = 0; i < T.haloW.length; i++) {
+    const w = bw * T.haloW[i];
+    c.globalAlpha = T.haloA[i];
+    c.beginPath();
+    pool.forEach((b) => { c.rect(b.x - w * 0.5, b.y - half, w, L); });
+    c.fill();
+  }
+  // --- 2) KOYU IZ: merminin arkasinda hizla sonen kisa hat
+  c.lineCap = 'round';
+  c.globalAlpha = 0.28;
+  c.strokeStyle = '#000';
+  c.lineWidth = bw * 0.7;
+  c.beginPath();
+  pool.forEach((b) => {
+    if (b.trailN >= 2) { c.moveTo(b.trailX[0], b.trailY[0]); c.lineTo(b.x, b.y); }
+  });
+  c.stroke();
+  // --- 3) PARLAK CEKIRDEK (lighter)
+  c.globalCompositeOperation = 'lighter';
+  // yumusak parlama: dar tutulur, yoksa bandin medyanini kendisi yukseltir
+  c.globalAlpha = T.glowA;
+  c.strokeStyle = outer;
+  c.lineWidth = bw * T.glowW;
+  c.beginPath();
+  pool.forEach((b) => { c.moveTo(b.x, b.y + half); c.lineTo(b.x, b.y - half); });
+  c.stroke();
+  c.globalAlpha = 1;
+  c.strokeStyle = outer;
+  c.lineWidth = bw * 0.7;
+  c.beginPath();
+  pool.forEach((b) => { c.moveTo(b.x, b.y + half); c.lineTo(b.x, b.y - half); });
+  c.stroke();
+  c.strokeStyle = inner;
+  c.lineWidth = bw / 3;
+  c.beginPath();
+  pool.forEach((b) => { c.moveTo(b.x, b.y + half); c.lineTo(b.x, b.y - half); });
+  c.stroke();
+  // --- 4) UC PARLAMASI: iki additif yay (mermi basina gradyan YOK)
+  c.globalAlpha = T.tipA;
+  c.fillStyle = outer;
+  c.beginPath();
+  pool.forEach((b) => {
+    const y = b.y + tipDy;
+    c.moveTo(b.x + T.tipR, y); c.arc(b.x, y, T.tipR, 0, TAU);
+  });
+  c.fill();
+  c.globalAlpha = 0.9;
+  c.fillStyle = inner;
+  const rIn = T.tipR * 0.45;
+  c.beginPath();
+  pool.forEach((b) => {
+    const y = b.y + tipDy;
+    c.moveTo(b.x + rIn, y); c.arc(b.x, y, rIn, 0, TAU);
+  });
+  c.fill();
+  c.restore();
+  return L;
+};
+
 /* --------------------------------------------------------------------- Rocket
    Round 12: kazanilabilir ek silah. Normal atisa EK olarak hafif gaitli.
    Hedef secimi deterministik: "en yakin aktif dusman, esitlikte en kucuk
@@ -3712,7 +3834,10 @@ class Player {
         const b = game.bulletPool.acquire();
         if (b) { b.reset(this.x + ox, this.y - h); }
       }
-      game.shotsFired += offsets.length;
+      /* Atis sayaci Game'in tek giris noktasindan gecer: hem shotsFired hem
+         kosu istatistigi (_stats.shots) orada artar. Burada dogrudan
+         `game.shotsFired += ...` yazilirsa istatistik sifir kalir. */
+      game.addShots(offsets.length);
       game.sound.playerShot();
     }
     if (this.muzzle > 0) this.muzzle -= dt;
@@ -4185,6 +4310,12 @@ class Game {
       /* Round 18: onarim parlamasi soneumu (yalniz cizim) + kombo zamanlayicisi */
       if (this.repairFlashT > 0) this.repairFlashT -= dt;
       this._updateCombo(dt);
+      /* Round 20: en iyi kombo YASAYAN sayactan izlenir, yalnizca _onKill'den
+         degil. Kombo sayaci oldurme disi yollardan da degisebiliyor
+         (forceCombo test kancasi, boss girisi sure yenilemesi); o zaman
+         _stats.bestCombo geride kaliyordu — olculdu: en_iyi_kombo=6/16.
+         Sim adiminda okunur, dt birikimine bagli degil: deterministik. */
+      if (this.comboCount > this._stats.bestCombo) this._stats.bestCombo = this.comboCount;
       /* Round 20: ipucu sirasi — sim adiminda, girdiye/cizime dokunmaz */
       this._updateTip(dt);
       /* Round 13: isisi — dash/roket/subLaunch harcar, sure ile sogur.
@@ -4256,6 +4387,11 @@ class Game {
         this.victoryT -= dt;
         if (this.victoryT <= 0) this.state = 'victory';
       }
+      /* Round 20: can bitince oyun BURADA biter — tek kosulsuz kapanis noktasi.
+         Oncesinde bitis yalnizca dusman mermisi carpismasinin icine gomuluydu;
+         canlari baska bir yol sifirlarsa oyun 'play'de asili kaliyor ve rekor
+         hic kaydedilmiyordu (olculdu: mod_oyun_sonu=play, rekor=0). */
+      if (this.player.lives <= 0) this._gameOver('düşman');
     }
     /* Round 19: menüde oyun dünyası kaymaya devam etsin (şehir + bulut).
        Yalnizca dist ilerler — bina/parallaks durumu degismez, sim'e dokunmaz. */
@@ -4306,6 +4442,26 @@ class Game {
       window.localStorage.setItem(CONFIG.STATS.storageKey,
         JSON.stringify({ best: this.bestScore, runs: this._runCount }));
     } catch (e) { /* bellek icindeki deger gecerli kalmaya devam eder */ }
+  }
+  /* Round 20: kosunun bitisi — TEK yol. Rekor burada kalicilasir; _savePersist
+     zaten try/catch icinde, yani localStorage erisilemezse oyun cokmez, rekor
+     bellekte kalir. Iki kez cagirilsa da bir kez calisir (state korumasi).   */
+  _gameOver(cause) {
+    if (this.state !== 'play') return;
+    if (cause && !this._killingEnemyType) this._killingEnemyType = cause;
+    this._newRecord = this.score > this.bestScore;
+    this.bestScore = Math.max(this.bestScore, this.score);
+    this._savePersist();
+    this.menuFadeT = 0;   // yumusak gecis
+    this.state = 'gameover';
+  }
+  /* Round 20: atis sayaci TEK YERDEN artar. Once `shotsFired` (HUD/harness)
+     ve kosu istatistigi `_stats.shots` ayri yerlerde tutuluyordu; ikincisi hic
+     artmadi ve isabet orani anlamsiz kaldi (olculdu: atis=0 isabet=6).
+     Player.update bunu cagirir — sim adiminda, wall-clock yok.              */
+  addShots(n) {
+    this.shotsFired += n;
+    this._stats.shots += n;
   }
   /* Ipuclu sirasi: sim adiminda ilerler (dt birikimi), cizim/girdiye dokunmaz.
      Yalnizca ilk CONFIG.TIPS.onlyFirstRuns kosuda calisir.                */
@@ -5440,75 +5596,11 @@ Object.assign(Game.prototype, {
      bile okunur. Toplam genislik <= 6 px, tracer_shape testi gecmeli.
      Dusman mermileri turuncu-kirmizi, oyuncu mermileri cyan.              */
   _drawBullets(c) {
-    const L = 22;                       // iz uzunlugu (<= 22 px, tracer)
-    this.tracerLen = L;                 // test kancasi: tracer_shape
-    c.save();
-    c.lineCap = 'round';
-    // --- KOYU KONTUR (source-over): her mermi altina 1px koyu hat
-    c.strokeStyle = 'rgba(0,0,0,0.7)';
-    c.lineWidth = 6;
-    c.beginPath();
-    this.bulletPool.forEach((b) => { c.moveTo(b.x, b.y + L / 2); c.lineTo(b.x, b.y - L / 2); });
-    c.stroke();
-    this.ebulletPool.forEach((b) => { c.moveTo(b.x, b.y - L / 2); c.lineTo(b.x, b.y + L / 2); });
-    c.stroke();
-    // --- KOYU IZ (trail): merminin arkasinda ~10px koyu, hizla sonen iz
-    c.globalAlpha = 0.4;
-    c.strokeStyle = 'rgba(0,0,0,0.7)';
-    c.lineWidth = 4;
-    c.beginPath();
-    this.bulletPool.forEach((b) => {
-      if (b.trailN >= 2) { c.moveTo(b.trailX[0], b.trailY[0]); c.lineTo(b.x, b.y); }
-    });
-    c.stroke();
-    this.ebulletPool.forEach((b) => {
-      if (b.trailN >= 2) { c.moveTo(b.trailX[0], b.trailY[0]); c.lineTo(b.x, b.y); }
-    });
-    c.stroke();
-    c.globalAlpha = 1;
-    // --- PARLAK CEKIRDEK (lighter)
-    c.globalCompositeOperation = 'lighter';
-    // oyuncu mermisi: cyan
-    c.strokeStyle = 'rgba(90,230,255,0.85)';
-    c.lineWidth = 4;
-    c.beginPath();
-    this.bulletPool.forEach((b) => { c.moveTo(b.x, b.y + L / 2); c.lineTo(b.x, b.y - L / 2); });
-    c.stroke();
-    c.strokeStyle = 'rgba(255,255,255,0.95)';
-    c.lineWidth = 2;
-    c.beginPath();
-    this.bulletPool.forEach((b) => { c.moveTo(b.x, b.y + L / 2); c.lineTo(b.x, b.y - L / 2); });
-    c.stroke();
-    // dusman mermisi: turuncu-kirmizi
-    c.strokeStyle = 'rgba(255,100,40,0.85)';
-    c.lineWidth = 4;
-    c.beginPath();
-    this.ebulletPool.forEach((b) => { c.moveTo(b.x, b.y - L / 2); c.lineTo(b.x, b.y + L / 2); });
-    c.stroke();
-    c.strokeStyle = 'rgba(255,220,180,0.95)';
-    c.lineWidth = 2;
-    c.beginPath();
-    this.ebulletPool.forEach((b) => { c.moveTo(b.x, b.y - L / 2); c.lineTo(b.x, b.y + L / 2); });
-    c.stroke();
-    // uc glow (oyuncu mermisi)
-    this.bulletPool.forEach((b) => {
-      const g = c.createRadialGradient(b.x, b.y - L / 2, 0, b.x, b.y - L / 2, 7);
-      g.addColorStop(0, 'rgba(255,255,255,0.95)');
-      g.addColorStop(0.5, 'rgba(90,230,255,0.4)');
-      g.addColorStop(1, 'rgba(90,230,255,0)');
-      c.fillStyle = g;
-      c.beginPath(); c.arc(b.x, b.y - L / 2, 7, 0, Math.PI * 2); c.fill();
-    });
-    // uc glow (dusman mermisi)
-    this.ebulletPool.forEach((b) => {
-      const g = c.createRadialGradient(b.x, b.y + L / 2, 0, b.x, b.y + L / 2, 7);
-      g.addColorStop(0, 'rgba(255,220,180,0.95)');
-      g.addColorStop(0.5, 'rgba(255,100,40,0.4)');
-      g.addColorStop(1, 'rgba(255,100,40,0)');
-      c.fillStyle = g;
-      c.beginPath(); c.arc(b.x, b.y + L / 2, 7, 0, Math.PI * 2); c.fill();
-    });
-    c.restore();
+    /* Round 21: cizimin tamami Bullet.drawPool'a tasindi (units paketi) --
+       mermi gorseli units'in isi, HUD yalnizca cagirir. Donen deger iz
+       uzunlugu; tracer_shape kancasi onu okur. */
+    this.tracerLen = Bullet.drawPool(c, this.bulletPool, false);
+    Bullet.drawPool(c, this.ebulletPool, true);
   },
   /* Rotor tozu (round 9): oyuncunun altinda rotor_wash sprite'i.
      Hiza gore hafif doner ve seffafalir — irtifa hissi verir. Yalniz cizim. */

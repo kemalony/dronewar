@@ -52,16 +52,74 @@ public class Sim(seed: Int = 0, droneId: String = PlayerSim.DEFAULT_DRONE) {
 
     /** Exactly one sim step at the fixed `dt`. `Game._simStep(this.clock.step)`. */
     public fun step() {
-        input.refreshAxis()
-        player.update(clock.step, input.ax, input.ay)
+        if (touchActive) {
+            // `Player.update()` takes the touch branch whenever the pointer is live;
+            // the keyboard axis is not even read there. Note it does NOT `return`
+            // afterwards on the web -- doing that once killed firing outright.
+            player.updateTouch(clock.step, baseX + touchDX, baseY + touchDY)
+        } else {
+            input.refreshAxis()
+            player.update(clock.step, input.ax, input.ay)
+        }
         steps++
     }
+
+    // ---------------------------------------------------------------- touch ----
+    //
+    // 1:1 *relative* finger tracking, ported from `src/input/Input.js`. The drone
+    // does not fly to the finger: it slides by however far the finger has slid since
+    // it went down, so the finger never covers the drone and aiming stays exact.
+    //
+    // `touchActive` is the Kotlin spelling of `_activePointer == null`. It starts
+    // false and every guard tests it, because on the web the field was once left
+    // undefined and a single stray move read `_originX` as undefined, turned
+    // `touchDX` into NaN and put the player at NaN.
+    //
+    // Debt, stated: this branch has no golden trace yet. The keyboard branch that
+    // `gate_core_sim.sh` drives runs only when `touchActive` is false, which it is
+    // for the whole of that trace.
+
+    private var touchActive: Boolean = false
+    private var originX: Double = 0.0
+    private var originY: Double = 0.0
+    private var baseX: Double = 0.0
+    private var baseY: Double = 0.0
+    private var touchDX: Double = 0.0
+    private var touchDY: Double = 0.0
+
+    /**
+     * Finger position in 480x800 internal coordinates. The first call after a
+     * release starts a new gesture: the origin is where the finger landed and the
+     * base is where the drone already is, so the drone does not jump.
+     */
+    public fun touchMove(x: Double, y: Double) {
+        if (!touchActive) {
+            touchActive = true
+            originX = x
+            originY = y
+            baseX = player.x
+            baseY = player.y
+        }
+        touchDX = x - originX
+        touchDY = y - originY
+    }
+
+    /** Finger lifted. The next [touchMove] rebases against the drone's new position. */
+    public fun touchRelease() {
+        touchActive = false
+        touchDX = 0.0
+        touchDY = 0.0
+    }
+
+    /** True while a finger is being tracked -- the auto-fire condition. */
+    public val touching: Boolean get() = touchActive
 
     /** Back to the `startGame()` state: player at spawn, clock and input clear. */
     public fun reset(seed: Int = 0) {
         clock.reset()
         input.clear()
         player.reset()
+        touchRelease()
         rng.reseed(seed)
         steps = 0L
     }

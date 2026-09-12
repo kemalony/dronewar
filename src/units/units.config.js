@@ -2,7 +2,7 @@
  *
  * Neden ayri dosya: src/core/CONFIG.js yalnizca core ajaninindir.
  * build_order.json icinde core/CONFIG.js'ten SONRA siralanir.            */
-CONFIG.SUBDRONE = {
+CONFIG.SUBDRONE = Object.assign(CONFIG.SUBDRONE || {}, {
   pool: 2,                // havuz boyutu (2 mini refakatci)
   offset: 34,             // oyuncunun yanindaki mesafe (px)
   followSmooth: 10,       // yumusak gecikme (1/s) — kritik sonumlu yaklasim
@@ -11,11 +11,17 @@ CONFIG.SUBDRONE = {
   kamikazeSpeed: 620,     // px/s — kamikaze modunda hiza
   kamikazeDamage: 6,      // carpisma hasari
   size: 48,               // cizim boyutu (manifest sub_drone 48x48)
-};
+});
 /* Jammer dronu: ateş ETMEZ; ekranda kaldigi surece oyuncuyu zayiflatir.
  * Oyuncu radius icindeyken birincil ates araligi fireSlowMul kadar yavaslar.
- * Havuz 4, onceden ayrilmis; Math.random YASAK (LCG). */
-CONFIG.JAMMER = {
+ * Havuz 4, onceden ayrilmis; Math.random YASAK (LCG).
+ *
+ * DIKKAT: `CONFIG.JAMMER = {...}` YAZMA — core/CONFIG.js bu anahtara
+ * hp / score / glitchLevel koyuyor; komple atama o ucunu de siliyordu.
+ * glitchLevel silindigi icin Game._updateJammerFx() undefined gonderiyor,
+ * FxSystem.setAmbientGlitch `level || 0` ile 0'a cekiyor ve jammer menzil
+ * glitch'i hic cizilmiyordu. Paylasilan anahtar EZILMEZ, genisletilir. */
+Object.assign(CONFIG.JAMMER, {
   pool: 4,                // havuz boyutu
   speed: 55,              // px/s — yavas inis
   hoverY: CONFIG.H * 0.30,   // ekranin ust yarısında kalmaya calisir
@@ -25,13 +31,16 @@ CONFIG.JAMMER = {
   fireSlowMul: 0.5,       // menzil icinde ates araligi carpani (yavaslatma)
   size: 80,               // cizim boyutu (manifest drone_jammer 80x72)
   ringPulse: 1.6,         // nabiz halka frekansi (rad/s) — yalniz cizim
-};
+});
 /* Cok asamali tasici boss (bolum 4 / Tokyo): parcalar sirayla cokertilir.
  * Sira: iki yan pilon -> kargo kapagi -> komuta anteni -> govde.
  * Govde ancak anten dustuktan sonra hasar alir. Her parcain kendi sprite'i
  * ve can'i var; dusen parca patlar ve o parcain saldirisi durur.
- * Tum zamanlama sim zamanina bagli; performance.now() YOK. */
-CONFIG.CARRIER = {
+ * Tum zamanlama sim zamanina bagli; performance.now() YOK.
+ * CARRIER'in TEK tanimi burasidir: core/CONFIG.js'teki eski blok (bodyHp 40 +
+ * dizi seklinde parts) Carrier.js'in okudugu sekle uymuyordu, olu koddu ve
+ * silindi. game.config.js bunun uzerine Object.assign ile ekleme yapar. */
+CONFIG.CARRIER = Object.assign(CONFIG.CARRIER || {}, {
   entryMs: 1800,          // giris inişi (ustten -> hoverY)
   hoverY: 150,            // salinim merkezi (y)
   swayAmp: 45,            // yatay salinim genligi (px)
@@ -61,7 +70,7 @@ CONFIG.CARRIER = {
   antennaJamRadius: 180,  // anten jammer alanı yaricapi (px)
   antennaJamMul: 0.6,     // anten menzilde ates araligi carpani
   bulletSpeed: 300,       // boss mermisi px/s
-};
+});
 
 /* Round 17: skimmer — limanin deniz tarafindan YANDAN giren alcak ucuslu dronu.
    Yalnizca liman bolumunde dogar; ekrani yatay gecer, oyuncunun bandina gelince

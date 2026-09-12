@@ -113,17 +113,10 @@ const CONFIG = {
     fireSlowMul: 0.6,                       // menzilde birincil ates araligi carpani
     glitchLevel: 0.5,                       // cizim glitch yogunlugu (0..1)
   },
-  /* Round 14: cok asamali boss — bolum 4'te Tokyo boss'unun yerine.
-     Parcalar sirayla yok edilir; govde son parca.                      */
-  CARRIER: {
-    bodyHp: 40,                             // govde can
-    parts: [
-      { id: 'pylonL',   sprite: 'boss_pylon',   hp: 30 },
-      { id: 'pylonR',   sprite: 'boss_pylon',   hp: 30 },
-      { id: 'bay',      sprite: 'boss_bay',     hp: 45 },
-      { id: 'antenna',  sprite: 'boss_antenna', hp: 60 },
-    ],
-  },
+  /* Round 14: cok asamali boss (CARRIER) BURADA TANIMLI DEGIL.
+     Tanim units/units.config.js icindedir: Carrier.js parcalari id'ye gore
+     anahtarlanmis bir nesne olarak okur, buradaki dizi sekli olu koddu ve
+     units'in komple atamasi tarafindan zaten siliniyordu.                */
   /* Round 16: kara hedefleri. YALNIZCA ground:true olan bölümde doğar.
      Kara hedefi zemine ÇİVİLİDİR: dünya koordinatında durur, ekran konumu
      city.dist'ten türetilir — zeminle birebir aynı hızda kayar (uçan bina olmaz). */

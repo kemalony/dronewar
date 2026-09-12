@@ -4,3 +4,6 @@ build/
 *.iml
 # Benchmark sprites are copies of ../assets; tools/android/bench_assets.sh recreates them.
 bench-*/src/main/assets/sprites/
+
+# Oyun sprite yuku assets/ kopyasi; tools/android/game_assets.sh yeniden uretir.
+game/src/main/assets/sprites/

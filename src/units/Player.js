@@ -196,7 +196,10 @@ class Player {
         const b = game.bulletPool.acquire();
         if (b) { b.reset(this.x + ox, this.y - h); }
       }
-      game.shotsFired += offsets.length;
+      /* Atis sayaci Game'in tek giris noktasindan gecer: hem shotsFired hem
+         kosu istatistigi (_stats.shots) orada artar. Burada dogrudan
+         `game.shotsFired += ...` yazilirsa istatistik sifir kalir. */
+      game.addShots(offsets.length);
       game.sound.playerShot();
     }
     if (this.muzzle > 0) this.muzzle -= dt;

@@ -89,75 +89,11 @@ Object.assign(Game.prototype, {
      bile okunur. Toplam genislik <= 6 px, tracer_shape testi gecmeli.
      Dusman mermileri turuncu-kirmizi, oyuncu mermileri cyan.              */
   _drawBullets(c) {
-    const L = 22;                       // iz uzunlugu (<= 22 px, tracer)
-    this.tracerLen = L;                 // test kancasi: tracer_shape
-    c.save();
-    c.lineCap = 'round';
-    // --- KOYU KONTUR (source-over): her mermi altina 1px koyu hat
-    c.strokeStyle = 'rgba(0,0,0,0.7)';
-    c.lineWidth = 6;
-    c.beginPath();
-    this.bulletPool.forEach((b) => { c.moveTo(b.x, b.y + L / 2); c.lineTo(b.x, b.y - L / 2); });
-    c.stroke();
-    this.ebulletPool.forEach((b) => { c.moveTo(b.x, b.y - L / 2); c.lineTo(b.x, b.y + L / 2); });
-    c.stroke();
-    // --- KOYU IZ (trail): merminin arkasinda ~10px koyu, hizla sonen iz
-    c.globalAlpha = 0.4;
-    c.strokeStyle = 'rgba(0,0,0,0.7)';
-    c.lineWidth = 4;
-    c.beginPath();
-    this.bulletPool.forEach((b) => {
-      if (b.trailN >= 2) { c.moveTo(b.trailX[0], b.trailY[0]); c.lineTo(b.x, b.y); }
-    });
-    c.stroke();
-    this.ebulletPool.forEach((b) => {
-      if (b.trailN >= 2) { c.moveTo(b.trailX[0], b.trailY[0]); c.lineTo(b.x, b.y); }
-    });
-    c.stroke();
-    c.globalAlpha = 1;
-    // --- PARLAK CEKIRDEK (lighter)
-    c.globalCompositeOperation = 'lighter';
-    // oyuncu mermisi: cyan
-    c.strokeStyle = 'rgba(90,230,255,0.85)';
-    c.lineWidth = 4;
-    c.beginPath();
-    this.bulletPool.forEach((b) => { c.moveTo(b.x, b.y + L / 2); c.lineTo(b.x, b.y - L / 2); });
-    c.stroke();
-    c.strokeStyle = 'rgba(255,255,255,0.95)';
-    c.lineWidth = 2;
-    c.beginPath();
-    this.bulletPool.forEach((b) => { c.moveTo(b.x, b.y + L / 2); c.lineTo(b.x, b.y - L / 2); });
-    c.stroke();
-    // dusman mermisi: turuncu-kirmizi
-    c.strokeStyle = 'rgba(255,100,40,0.85)';
-    c.lineWidth = 4;
-    c.beginPath();
-    this.ebulletPool.forEach((b) => { c.moveTo(b.x, b.y - L / 2); c.lineTo(b.x, b.y + L / 2); });
-    c.stroke();
-    c.strokeStyle = 'rgba(255,220,180,0.95)';
-    c.lineWidth = 2;
-    c.beginPath();
-    this.ebulletPool.forEach((b) => { c.moveTo(b.x, b.y - L / 2); c.lineTo(b.x, b.y + L / 2); });
-    c.stroke();
-    // uc glow (oyuncu mermisi)
-    this.bulletPool.forEach((b) => {
-      const g = c.createRadialGradient(b.x, b.y - L / 2, 0, b.x, b.y - L / 2, 7);
-      g.addColorStop(0, 'rgba(255,255,255,0.95)');
-      g.addColorStop(0.5, 'rgba(90,230,255,0.4)');
-      g.addColorStop(1, 'rgba(90,230,255,0)');
-      c.fillStyle = g;
-      c.beginPath(); c.arc(b.x, b.y - L / 2, 7, 0, Math.PI * 2); c.fill();
-    });
-    // uc glow (dusman mermisi)
-    this.ebulletPool.forEach((b) => {
-      const g = c.createRadialGradient(b.x, b.y + L / 2, 0, b.x, b.y + L / 2, 7);
-      g.addColorStop(0, 'rgba(255,220,180,0.95)');
-      g.addColorStop(0.5, 'rgba(255,100,40,0.4)');
-      g.addColorStop(1, 'rgba(255,100,40,0)');
-      c.fillStyle = g;
-      c.beginPath(); c.arc(b.x, b.y + L / 2, 7, 0, Math.PI * 2); c.fill();
-    });
-    c.restore();
+    /* Round 21: cizimin tamami Bullet.drawPool'a tasindi (units paketi) --
+       mermi gorseli units'in isi, HUD yalnizca cagirir. Donen deger iz
+       uzunlugu; tracer_shape kancasi onu okur. */
+    this.tracerLen = Bullet.drawPool(c, this.bulletPool, false);
+    Bullet.drawPool(c, this.ebulletPool, true);
   },
   /* Rotor tozu (round 9): oyuncunun altinda rotor_wash sprite'i.
      Hiza gore hafif doner ve seffafalir — irtifa hissi verir. Yalniz cizim. */

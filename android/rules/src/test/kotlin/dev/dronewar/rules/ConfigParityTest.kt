@@ -129,10 +129,10 @@ class ConfigParityTest {
         val perFile = owners.values.groupingBy { it }.eachCount()
         assertEquals(
             mapOf(
-                "src/core/CONFIG.js" to 458,
-                "src/units/units.config.js" to 67,
-                "src/audio/audio.config.js" to 28,
-                "src/fx/fx.config.js" to 20,
+                "src/core/CONFIG.js" to 456,
+                "src/units/units.config.js" to 70,
+                "src/audio/audio.config.js" to 30,
+                "src/fx/fx.config.js" to 35,
                 "src/game/game.config.js" to 5,
             ),
             perFile,

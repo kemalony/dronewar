@@ -43,11 +43,21 @@ tasks.named("compileKotlin") {
     dependsOn(generateConfig)
 }
 
+// The test measures the generated constants against the web dump. The dump is
+// read-only input here; :rules never writes to android/harness/golden/.
+val goldenConfig: File = rootProject.file("harness/golden/config.json")
+
 tasks.named<Test>("test") {
     useJUnitPlatform()
-    // The test measures the generated constants against the web dump. The dump is
-    // read-only input here; :rules never writes to android/harness/golden/.
-    systemProperty("dronewar.golden.config", rootProject.file("harness/golden/config.json").absolutePath)
+    systemProperty("dronewar.golden.config", goldenConfig.absolutePath)
+
+    // Declared as a task input so that changing the dump re-runs the tests. Without
+    // this the task reports FROM-CACHE and the gate goes green against a golden file
+    // it never read: exactly what happened when the web's ownership split shifted and
+    // config_parity kept saying PASS. A gate that cannot see its own reference change
+    // is decoration.
+    inputs.file(goldenConfig).withPropertyName("goldenConfig")
+
     testLogging { showStandardStreams = true }
 }
 

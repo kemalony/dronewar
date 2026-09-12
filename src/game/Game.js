@@ -395,6 +395,12 @@ class Game {
       /* Round 18: onarim parlamasi soneumu (yalniz cizim) + kombo zamanlayicisi */
       if (this.repairFlashT > 0) this.repairFlashT -= dt;
       this._updateCombo(dt);
+      /* Round 20: en iyi kombo YASAYAN sayactan izlenir, yalnizca _onKill'den
+         degil. Kombo sayaci oldurme disi yollardan da degisebiliyor
+         (forceCombo test kancasi, boss girisi sure yenilemesi); o zaman
+         _stats.bestCombo geride kaliyordu — olculdu: en_iyi_kombo=6/16.
+         Sim adiminda okunur, dt birikimine bagli degil: deterministik. */
+      if (this.comboCount > this._stats.bestCombo) this._stats.bestCombo = this.comboCount;
       /* Round 20: ipucu sirasi — sim adiminda, girdiye/cizime dokunmaz */
       this._updateTip(dt);
       /* Round 13: isisi — dash/roket/subLaunch harcar, sure ile sogur.
@@ -466,6 +472,11 @@ class Game {
         this.victoryT -= dt;
         if (this.victoryT <= 0) this.state = 'victory';
       }
+      /* Round 20: can bitince oyun BURADA biter — tek kosulsuz kapanis noktasi.
+         Oncesinde bitis yalnizca dusman mermisi carpismasinin icine gomuluydu;
+         canlari baska bir yol sifirlarsa oyun 'play'de asili kaliyor ve rekor
+         hic kaydedilmiyordu (olculdu: mod_oyun_sonu=play, rekor=0). */
+      if (this.player.lives <= 0) this._gameOver('düşman');
     }
     /* Round 19: menüde oyun dünyası kaymaya devam etsin (şehir + bulut).
        Yalnizca dist ilerler — bina/parallaks durumu degismez, sim'e dokunmaz. */
@@ -516,6 +527,26 @@ class Game {
       window.localStorage.setItem(CONFIG.STATS.storageKey,
         JSON.stringify({ best: this.bestScore, runs: this._runCount }));
     } catch (e) { /* bellek icindeki deger gecerli kalmaya devam eder */ }
+  }
+  /* Round 20: kosunun bitisi — TEK yol. Rekor burada kalicilasir; _savePersist
+     zaten try/catch icinde, yani localStorage erisilemezse oyun cokmez, rekor
+     bellekte kalir. Iki kez cagirilsa da bir kez calisir (state korumasi).   */
+  _gameOver(cause) {
+    if (this.state !== 'play') return;
+    if (cause && !this._killingEnemyType) this._killingEnemyType = cause;
+    this._newRecord = this.score > this.bestScore;
+    this.bestScore = Math.max(this.bestScore, this.score);
+    this._savePersist();
+    this.menuFadeT = 0;   // yumusak gecis
+    this.state = 'gameover';
+  }
+  /* Round 20: atis sayaci TEK YERDEN artar. Once `shotsFired` (HUD/harness)
+     ve kosu istatistigi `_stats.shots` ayri yerlerde tutuluyordu; ikincisi hic
+     artmadi ve isabet orani anlamsiz kaldi (olculdu: atis=0 isabet=6).
+     Player.update bunu cagirir — sim adiminda, wall-clock yok.              */
+  addShots(n) {
+    this.shotsFired += n;
+    this._stats.shots += n;
   }
   /* Ipuclu sirasi: sim adiminda ilerler (dt birikimi), cizim/girdiye dokunmaz.
      Yalnizca ilk CONFIG.TIPS.onlyFirstRuns kosuda calisir.                */

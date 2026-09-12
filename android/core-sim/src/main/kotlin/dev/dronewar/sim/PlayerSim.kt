@@ -106,6 +106,56 @@ public class PlayerSim(droneId: String = DEFAULT_DRONE) {
         if (y > Config.H - h) { y = Config.H - h; vy = 0.0 }
     }
 
+    /**
+     * One simulation step on the **touch branch** (`src/units/Player.js:99-110`).
+     *
+     * This is not the keyboard integrator with a different input: the web source
+     * disables acceleration and inertia here and walks straight at the target with a
+     * speed-limited step, so the finger and the drone stay 1:1 and aiming is exact.
+     * [tx]/[ty] are the absolute target in 480x800 space -- the caller ([Sim]) owns
+     * the relative rebasing, exactly as `Input` does on the web.
+     *
+     * Known debt, written down rather than hidden: this branch has **no golden
+     * trace yet**, so it is not measured parity. The keyboard branch above is, and
+     * nothing here touches it.
+     */
+    public fun updateTouch(dt: Double, rawTx: Double, rawTy: Double) {
+        val h = Config.PLAYER.half
+        val tx = JsMath.max(h, JsMath.min(Config.W - h, rawTx))
+        val ty = JsMath.max(h, JsMath.min(Config.H - h, rawTy))
+        val dx = tx - x
+        val dy = ty - y
+        val dist = JsMath.hypot(dx, dy)
+        val step = Config.PLAYER.followSpeed * dt
+        if (dist <= step || dist == 0.0) {
+            x = tx
+            y = ty
+            vx = 0.0
+            vy = 0.0
+        } else {
+            x += dx / dist * step
+            y += dy / dist * step
+            // The velocity is reported, not integrated -- draw-side banking reads it.
+            vx = dx / dist * Config.PLAYER.followSpeed
+            vy = dy / dist * Config.PLAYER.followSpeed
+        }
+        clampTouch()
+    }
+
+    /**
+     * `_clamp()` -- the touch branch's own clamp, and deliberately NOT the four
+     * unconditional `if`s the keyboard path uses: it is if/else-if per axis, it
+     * clamps at `PLAYER.half` rather than `hitR()`, and it only zeroes the velocity
+     * when that velocity is pushing into the wall.
+     */
+    private fun clampTouch() {
+        val h = Config.PLAYER.half
+        if (x < h) { x = h; if (vx < 0.0) vx = 0.0 }
+        else if (x > Config.W - h) { x = Config.W - h; if (vx > 0.0) vx = 0.0 }
+        if (y < h) { y = h; if (vy < 0.0) vy = 0.0 }
+        else if (y > Config.H - h) { y = Config.H - h; if (vy > 0.0) vy = 0.0 }
+    }
+
     public companion object {
         /** `CONFIG.DRONES.find(d => d.id === (droneId || 'falcon')) || CONFIG.DRONES[0]`. */
         public const val DEFAULT_DRONE: String = Config.DRONES._0.id

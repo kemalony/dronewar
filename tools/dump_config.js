@@ -74,18 +74,43 @@ function flatten(obj, prefix, out) {
 const flat = {};
 flatten(ctx.__CONFIG, '', flat);
 
-// Owner = the first file in build order whose cumulative evaluation contains the key.
+// Owner = the LAST file in build order that changed the key's value. First-appearance
+// attribution is wrong for a key whose object gets replaced later: it credits the file
+// whose value was thrown away.
+//
+// The same pass detects the destructive case. Writing `CONFIG.X = {...}` instead of
+// `Object.assign(CONFIG.X, {...})` replaces the whole object and SILENTLY DELETES the
+// sibling keys another package put there. That leaves no duplicate behind, so a
+// duplicate-key check cannot see it -- the evidence is destroyed along with the key.
+// It has bitten this project twice (CONFIG.SUBDRONE, then CONFIG.JAMMER), so the dump
+// reports it as data rather than trusting anyone to remember.
 const owner = {};
-let seen = new Set();
+const destroyed = [];
+let prev = {};
 for (let n = 1; n <= FILES.length; n++) {
   const partial = {};
   flatten(evalUpTo(n), '', partial);
+  const file = FILES[n - 1];
+
   for (const k of Object.keys(partial)) {
-    if (!seen.has(k)) {
-      owner[k] = FILES[n - 1];
-      seen.add(k);
+    if (!(k in prev) || prev[k] !== partial[k]) owner[k] = file;
+  }
+  for (const k of Object.keys(prev)) {
+    if (!(k in partial)) {
+      destroyed.push({ key: k, value: prev[k], definedBy: owner[k], destroyedBy: file });
     }
   }
+  prev = partial;
+}
+
+if (destroyed.length) {
+  console.error(
+    `\n!! ${destroyed.length} config key(s) silently deleted by whole-object assignment:`
+  );
+  for (const d of destroyed) {
+    console.error(`   ${d.key}  (set in ${d.definedBy}, erased by ${d.destroyedBy})`);
+  }
+  console.error('   Use Object.assign(CONFIG.X, {...}), never CONFIG.X = {...}.\n');
 }
 
 const keys = Object.keys(flat).sort();
@@ -99,6 +124,7 @@ const out = {
   count: keys.length,
   values: Object.fromEntries(keys.map((k) => [k, flat[k]])),
   owners: Object.fromEntries(keys.map((k) => [k, owner[k]])),
+  destroyed,
 };
 
 const dest = path.join(ROOT, 'android/harness/golden/config.json');
