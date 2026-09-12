@@ -47,12 +47,23 @@ APK=$(ls android/game/build/outputs/apk/debug/*.apk 2>/dev/null | head -1)
 
 say "AC-1  soguk acilis <= 1500 ms, FATAL yok"
 "$ADB" shell am force-stop "$PKG"; "$ADB" logcat -c; sleep 1
-LAUNCH=$("$ADB" shell am start -W -n "$ACT" 2>&1)
-TOTAL=$(echo "$LAUNCH" | awk -F': ' '/^TotalTime/{print $2}')
+# Uc soguk acilisin MEDYANI. Tek olcum yuklu emulatorde guvenilmez: ayni build
+# arka arkaya 584-1026 ms verirken, gradle derlemesi ve APK kurulumundan hemen
+# sonra 1891 ms olculdu. Medyan tek bir stall'a dayanir, gercek bir gerilemeyi
+# yine yakalar.
+TIMES=""
+for _ in 1 2 3; do
+  "$ADB" shell am force-stop "$PKG" >/dev/null 2>&1
+  "$ADB" shell am kill-all >/dev/null 2>&1
+  sleep 2
+  T=$("$ADB" shell am start -W -n "$ACT" 2>/dev/null | awk -F': ' '/^TotalTime/{print $2}')
+  [ -n "$T" ] && TIMES="$TIMES $T"
+done
+TOTAL=$(echo $TIMES | tr ' ' '\n' | sort -n | sed -n 2p)
 if [ -n "$TOTAL" ] && [ "$TOTAL" -le 1500 ]; then
-  pass "soguk acilis ${TOTAL} ms"
+  pass "soguk acilis medyan ${TOTAL} ms (olcumler:$TIMES)"
 else
-  fail "soguk acilis ${TOTAL:-yok} ms (<=1500 olmali)"
+  fail "soguk acilis medyan ${TOTAL:-yok} ms (<=1500 olmali, olcumler:$TIMES)"
 fi
 sleep 3
 if "$ADB" logcat -d -s AndroidRuntime 2>/dev/null | grep -q "FATAL"; then
@@ -95,6 +106,18 @@ sleep 8
 S3=$(read_state); MODE=$(jq_get "$S3" mode); LIVES=$(jq_get "$S3" lives)
 [ "$MODE" = "over" ] && pass "can 0 -> mode=over (lives=$LIVES)" \
                      || fail "oyun sonuna gecmedi (mode=${MODE:-yok} lives=${LIVES:-yok})"
+
+say "AC-4b  oyun sonundan dokunusla cikilabiliyor"
+# AC-4 yalnizca oyun sonuna VARILDIGINI olcuyordu, oradan CIKILABILDIGINI degil.
+# Gercek bir hata bu delikten gecti: `--ei autoplay` ile baslatilan build'de
+# autoplay bayragi hic kapanmiyordu ve dokun-baslat dali !autoplay ile korunduğu
+# icin uygulama oyun sonu ekraninda kalici olarak sagir kaliyordu. Cokme yok,
+# render dongusu donuyor -- disaridan hicbir sey bozuk gorunmuyor.
+"$ADB" shell input tap 540 1100 >/dev/null 2>&1
+sleep 2
+S4=$(read_state); MODE4=$(jq_get "$S4" mode)
+[ "$MODE4" = "play" ] && pass "oyun sonunda dokunus -> mode=play" \
+                      || fail "oyun sonundan cikilamiyor (dokunus sonrasi mode=${MODE4:-yok})"
 
 say "AC-5  sicak kare cpu_p95 <= 2.0 ms"
 B=$("$ADB" shell cat "$BENCH" 2>/dev/null | tr -d '\r')

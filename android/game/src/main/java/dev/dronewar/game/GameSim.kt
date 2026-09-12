@@ -201,6 +201,13 @@ class GameSim(private val fx: Fx) {
         if (mode == m) return
         mode = m
         modeSeq++
+        // A scripted run hands control back when it ends. Without this, `autoplay`
+        // stayed true forever and the tap-to-start branch below (guarded by
+        // !autoplay) never fired again: the app sat on the game-over screen and
+        // ignored every touch. Anyone who had once launched it with
+        // `--ei autoplay` had a permanently deaf build, with no crash and the
+        // render loop still ticking, so nothing looked wrong.
+        if (m == MODE_OVER) autoplay = false
     }
 
     /**

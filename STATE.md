@@ -93,6 +93,17 @@
 - **Cila (Round 13+):** Değerlendirici bulgularıyla ince ayar.
 
 ## Orkestratör Notları — Geri Alma
+- **Hata ayıklama bayrağı uygulamayı kalıcı sağır bıraktı.** Android `:game`'de
+  `--ei autoplay` ile açılan `autoplay` bayrağı hiç kapanmıyordu ve dokun-başlat dalı
+  `!autoplay` ile korunduğu için uygulama oyun sonu ekranında **her dokunuşu yok
+  sayıyordu**. Çökme yok, render döngüsü dönüyor, `frames` artıyor — dışarıdan hiçbir
+  şey bozuk görünmüyor. Artık oyun sonuna geçerken bayrak temizleniyor.
+  **Kapı deliği:** AC-4 yalnızca oyun sonuna VARILDIĞINI ölçüyordu, oradan
+  ÇIKILABİLDİĞİNİ değil. Web tarafına `ui_no_deadend` yazmıştım, Android'e yazmamıştım.
+  `AC-4b` eklendi.
+- **Yüklü emülatörde tek ölçüm güvenilmez.** Aynı build arka arkaya 584–1026 ms soğuk
+  açılış verirken, gradle derlemesi ve APK kurulumundan hemen sonra 1891 ms ölçüldü ve
+  kapı yanlış kırmızı yandı. `AC-1` artık üç açılışın medyanını alıyor.
 - **Arayüz okunurluğu arkadakine bağlı olmamalı.** Menüler canlı kayan şehrin üstüne
   çiziliyor; yumuşak radyal perde ekran KENARLARINDA sıfıra iniyordu ama ölçülen bant
   tam genişlik — yani perde tam ihtiyaç duyulan yerde yoktu. Bölüm kartı parlak
