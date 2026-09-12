@@ -92,6 +92,13 @@ def encode(golden_value):
         return flag
     if golden_value.startswith("i:"):
         return str(int(golden_value[2:]))
+    if golden_value == "null":
+        # TOML'da null yoktur. Web tarafinda bu deger `if (tone)` gibi bir
+        # falsy kontrolunden geciyor, yani null ile ANAHTARIN OLMAMASI birebir
+        # ayni davraniyor (CONFIG.MUSIC.layerTone[1] = null -> "bu katmana
+        # filtre yok"). Dolayisiyla dogru temsil, anahtari hic uretmemek.
+        # ConfigParityTest bunu `null ise Kotlin'de BULUNMAMALI` diye dogrular.
+        return None
     raise SystemExit("unknown value encoding: %r" % golden_value)
 
 
@@ -146,7 +153,10 @@ def main():
             if previous_root is not None and root != previous_root:
                 lines.append("")
             previous_root = root
-            lines.append("%s = %s" % (key, encode(values[key])))
+            enc = encode(values[key])
+            if enc is None:
+                continue        # null: TOML'a yazilmaz (bkz. encode)
+            lines.append("%s = %s" % (key, enc))
         lines.append("")
         path = os.path.join(OUT_DIR, basename)
         with open(path, "w", encoding="utf-8") as handle:

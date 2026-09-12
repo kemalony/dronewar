@@ -39,7 +39,13 @@ class ConfigParityTest {
         assertEquals(expectedCount, goldenValues.size, "golden dump disagrees with its own count")
 
         val actual = ConfigIndex.ALL
-        val missing = goldenValues.keys - actual.keys
+        // TOML'da null yoktur ve web tarafinda null ile anahtarin OLMAMASI ayni
+        // sey (CONFIG.MUSIC.layerTone[1] = null -> "bu katmana filtre yok", ve
+        // okuyan taraf `if (tone)` ile bakiyor). Dogru temsil uretmemektir, ama
+        // bu bir muafiyet degil bir SART: `null` anahtar Kotlin'de VAR olursa
+        // asagidaki `extra` kontrolu onu yakalar.
+        val nullKeys = goldenValues.filterValues { it == "null" }.keys
+        val missing = goldenValues.keys - actual.keys - nullKeys
         val extra = actual.keys - goldenValues.keys
 
         assertEquals(
@@ -50,7 +56,7 @@ class ConfigParityTest {
             emptySet<String>(), extra,
             "${extra.size} generated constants are not in the golden dump (first few: ${extra.take(10)})",
         )
-        assertEquals(expectedCount, actual.size, "generated key count")
+        assertEquals(expectedCount - nullKeys.size, actual.size, "generated key count (golden null anahtarlar uretilmez)")
     }
 
     @Test
@@ -62,8 +68,17 @@ class ConfigParityTest {
         var booleans = 0
         var lengths = 0
 
+        var nulls = 0
         for ((key, encoded) in goldenValues) {
             val value = actual[key]
+            if (encoded == "null") {
+                // TOML'da null yok ve web tarafinda null ile anahtarin olmamasi
+                // ayni sey (falsy kontrolu). Dogru temsil: uretilmemis olmak.
+                // Yine de OLCULUR -- sessizce atlanmaz.
+                if (value != null) mismatches += "$key: golden null, Kotlin'de deger var ($value)"
+                else nulls++
+                continue
+            }
             if (value == null) {
                 mismatches += "$key: missing from generated Config"
                 continue
@@ -105,7 +120,7 @@ class ConfigParityTest {
 
         println(
             "config_parity: ${goldenValues.size} keys checked " +
-                "($doubles float64 bit-exact, $strings strings, $booleans booleans, $lengths array lengths)"
+                "($doubles float64 bit-exact, $strings strings, $booleans booleans, $lengths array lengths, $nulls null)"
         )
         assertTrue(
             mismatches.isEmpty(),
@@ -131,15 +146,25 @@ class ConfigParityTest {
             mapOf(
                 "src/core/CONFIG.js" to 456,
                 "src/units/units.config.js" to 70,
-                "src/audio/audio.config.js" to 30,
-                "src/fx/fx.config.js" to 35,
-                "src/game/game.config.js" to 5,
+                "src/audio/audio.config.js" to 88,
+                "src/fx/fx.config.js" to 38,
+                "src/game/game.config.js" to 11,
             ),
             perFile,
             "golden ownership split changed; regenerate config/*.toml with " +
                 "tools/android/bootstrap_rules_config.py",
         )
-        assertTrue(owners.keys.all { it in ConfigIndex.ALL }, "an owned key has no generated constant")
+        @Suppress("UNCHECKED_CAST")
+        val values = golden["values"] as Map<String, String>
+        val nullOwned = owners.keys.filter { values[it] == "null" }
+        assertTrue(
+            (owners.keys - nullOwned.toSet()).all { it in ConfigIndex.ALL },
+            "an owned key has no generated constant",
+        )
+        assertTrue(
+            nullOwned.none { it in ConfigIndex.ALL },
+            "a golden-null key was generated anyway: ${nullOwned.filter { it in ConfigIndex.ALL }}",
+        )
     }
 }
 

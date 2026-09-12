@@ -1,6 +1,6 @@
 # DRONE WAR — Durum
 
-## Tur: 21 (tamamlandı — web 68 PASS / 1 FAIL; tek FAIL vision_polish = ulaşılamayan LAN API)
+## Tur: 23 (tamamlandı — web 68 PASS / 1 FAIL; tek FAIL vision_polish = ulaşılamayan LAN API)
 
 ## Tamamlanan
 - **Motor:** Sabit adım sim (120Hz akümülatör), Clock, Input, Assets, Renderer, Pool, Player, Bullet, Enemy, Boss, Game
@@ -67,11 +67,40 @@
   fiziği, altın iz 720/720), `:harness` (kapılar), `:game` (emülatörde oynanabilir dilim).
   Kapılar: `tools/android/gate_*.sh`, yeniden senkron: `tools/android/resync_golden.sh`.
 
+- **Round 22–23 — olu kod canlandirildi.** Denetimin bulduklari: `FallingWreck`
+  (sinif tam, cagiran yok, ustelik `startVy`/`smokeEvery`/`smokeLife` eksik oldugu
+  icin cagrilsa `NaN`), `FxSystem.glitch()` (cagiran yok), `Sound.hover()` (cagiran
+  yok), jammer dronu (alti dusman havuzu taraniyor, `jammerPool` listede yok).
+  Hepsi baglandi; `tools/gate_deadcode.py` 6/6 olcuyor. `glitch.level=0.5` ilk kez
+  gercek deger uretiyor — `JAMMER.glitchLevel` Round 21'de ezilmekten kurtarilmisti.
+- **Ses kalitesi (Round 23).** Her zarf `setValueAtTime` ile basliyordu (her sesin
+  onunde genis bantli tik); `enemyDeath` 8 sesli butcenin UCUNU birden yiyordu;
+  tavan yoktu. SFX -> kompresor -> master -> limiter zinciri, cok parcali sesler tek
+  slot, atis/patlama gurultu tabanli yeniden yazildi. `Math.random()` artik `src/`
+  icinde hic yok; ses varyasyonu yalniz `Sound`'un okudugu bir sayactan — sim LCG'sine
+  DOKUNMUYOR, yani Android altin izi catallanmiyor.
+
 ## Kalan / Sonraki Turlar
 - **Vision polish (Round 13+):** min_score=7 (hedef 8), blocking değişken (hedef 0).
 - **Cila (Round 13+):** Değerlendirici bulgularıyla ince ayar.
 
 ## Orkestratör Notları — Geri Alma
+- **Karo hazirlarken kaynaktan GENIS kirpma.** 752 px'lik bir goruntuden 806 px
+  isteyince PIL disariyi siyahla doldurur ve karonun iki yanina bant gomulur —
+  oyunda kenarda siyah serit. Karo geometrisi DOGRUYKEN olur, o yuzden pay hesabi
+  yakalamaz. Kural: kaynak hedeften darsa DIKEY kirp. `tools/tile_seam_check.py`
+  artik `TILE_BORDER` ile olcuyor (manifest'teki karolar; `city_dusk`/`city_neon`
+  kayitli degil, oyun yuklemiyor).
+- **Karo kaydirma payi = (W*tileZoom - W)/2 ve kayma + sarsintiyi karsilamali.**
+  1.10'da pay 24 px, maksimum kayma da tam 24 px idi — artan SIFIR, yani kenara
+  dayanip sarsinti almak karonun kenarini ekrana sokuyordu. 1.18 -> pay 43.2 px.
+  **`tileZoom` degistirmek gorunur dikis satirini (H/tileZoom) kaydirir**, karolar
+  `tools/blend_tiles.py --from-ref <temiz>` ile TEMIZ TABANDAN yeniden
+  harmanlanmali; ton duzeltmesi birikimlidir.
+- **`CONFIG` degerinde `null` TOML'a yazilamaz.** `MUSIC.layerTone[1] = null`
+  ("bu katmana filtre yok") web'de anahtarin olmamasiyla ayni davraniyor, o yuzden
+  port tarafinda uretilmez — ama bu muafiyet degil SART: `ConfigParityTest` golden'da
+  null olan bir anahtar Kotlin'de VARSA dusuyor.
 - **`CONFIG.ROTOR.centers` sprite'la uyuşmuyorsa hiçbir kapı yakalamaz.** `rotor_spin`
   yalnızca açının değiştiğini ve deterministik olduğunu ölçer; yayların ROTORLARIN
   ÜSTÜNE düştüğünü ölçmez. Round 21'de ölçüldü: gunner'da 6 merkez / 4 rotor,

@@ -25,16 +25,19 @@ Object.assign(Game.prototype, {
     this._addComboScore(e.score);
     this._scorePop(e.x, e.y, e.score);
     this._onKill();
-    /* Round 22: vurulan dron artik bir pufta yok OLMUYOR — pervanesi kirilip
-       donerek asagi suzuluyor (FallingWreck), omru dolunca patliyor. Olumun
-       aninda okunakli kalmasi icin kucuk bir kivilcim vurusu birakilir.
-       Enkaz havuzu doluysa (12 slot) eski davranisa dusulur: tam patlama —
-       yoksa yogun anlarda olumler sessizce gorunmez olurdu.                */
-    const cnt = typeof this.fx.wreckCount === 'function' ? this.fx.wreckCount() : -1;
+    /* Round 22: olum geri bildirimi UC KATMANLI patlamadir (round 6: flash +
+       fire + smoke); enkaz onun yerine gecmez, USTUNE gelir. Patlama olum
+       ANINDA calar, govde donerek suzulur, omru dolunca bir kez daha patlar.
+       Ilk yazimda patlamayi yalnizca "enkaz havuzu dolu" daline koymustum:
+       normal olum tek kivilcima dustu ve explosion_layers kapisi (uc katmanin
+       da cizilmesi) kirmiziya dondu — vurusun tokati da kayboldu.
+       Havuz basincı ARTMAZ: olum basina patlama sayisi round 21'deki gibi bir
+       tanedir, ayrica kivilcim vurusu (fx.hit) EKLENMEZ — explode zaten
+       CONFIG.FX.sparksPerExplosion kadar kivilcim atar.                     */
+    this.fx.explode(e.x, e.y);
+    /* Enkaz havuzu (12 slot) doluysa geri bildirim yine TAM: patlama calisti,
+       yalnizca dusen govde eksik kalir — sessiz olum yok. */
     this.fx.spawnWreck(e.x, e.y, e.sprite, this._wreckLcg());
-    const spawned = cnt < 0 ? true : this.fx.wreckCount() > cnt;
-    if (spawned) this.fx.hit(e.x, e.y);
-    else this.fx.explode(e.x, e.y);
     this._maybeDropPowerup(e.x, e.y);
     this.sound.enemyDeath();
     this.hitstopT = Math.max(this.hitstopT, CONFIG.HITSTOP.enemyMs / 1000);
@@ -274,11 +277,9 @@ Object.assign(Game.prototype, {
     this._addComboScore(score);
     this._scorePop(j.x, j.y, score);
     this._onKill();
-    const cnt = typeof this.fx.wreckCount === 'function' ? this.fx.wreckCount() : -1;
+    /* Diger hava olumleriyle ayni: once uc katmanli patlama, ustune enkaz. */
+    this.fx.explode(j.x, j.y);
     this.fx.spawnWreck(j.x, j.y, 'drone_jammer', this._wreckLcg());
-    const spawned = cnt < 0 ? true : this.fx.wreckCount() > cnt;
-    if (spawned) this.fx.hit(j.x, j.y);
-    else this.fx.explode(j.x, j.y);
     this._maybeDropPowerup(j.x, j.y);
     this.sound.enemyDeath();
     this.hitstopT = Math.max(this.hitstopT, CONFIG.HITSTOP.enemyMs / 1000);
