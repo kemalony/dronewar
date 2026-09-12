@@ -12,3 +12,6 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 }
+// The benchmark scene must not restate constants the port already owns; :rules is
+// the single source and the ownership gate guards it.
+dependencies { implementation(project(":rules")) }

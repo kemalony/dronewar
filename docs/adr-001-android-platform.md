@@ -121,6 +121,16 @@ giren şey adaylar **arası** oran.
   çağrıya çıkıyor ve gl **canvas'tan yavaş** oluyor (ilk ölçümde `cpu_p50` 1.93 ms).
   Gövdeler dokuya göre gruplanıp rotorlar tek geçişte çizilince 9 çağrıya indi.
   `render` paketi bir `draw_calls` kapısı taşımalı.
+- **Tek kaynak ihlali giderildi.** `bench-core/Scene.kt` bir süre `W`, `H`,
+  `STEP_HZ`, `BULLETS` sabitlerini kendi içinde tanımlıyordu — `CONFIG.W`,
+  `CONFIG.H`, `CONFIG.SIM_HZ`, `CONFIG.FIRE.pool`'un ikinci kopyası. Sebep
+  sıralamaydı: bench, ADR'i ölçmek için `:rules`'tan önce yazıldı. `bench-core`
+  artık `:rules`'a bağlı ve bu dördünü `Config`'ten okuyor; değerler zaten
+  birebir aynıydı (480/800/120/96), dolayısıyla ölçüm değişmedi — yeniden
+  koşumda `touch_p50` 13.93 ms (önce 14.07), `fps` 55.0 (önce 55.5).
+  `ENEMIES`/`PARTICLES`/`CITY_LAYERS` bench'te kalıyor: bunlar `frame_budget`
+  kapısının sahne parametreleri, oyunun sabitleri değil, ve `CONFIG` karşılıkları
+  yok — tek tanımları burası.
 - `android/bench-core/Lcg.kt` **kopyalanmamalıdır**: 24 bitlik mantis ile `Float`
   döndürüyor, web'i birebir üretemez. `core-sim` LCG'si `Double` üzerinden yazılacak.
 

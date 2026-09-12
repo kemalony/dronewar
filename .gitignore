@@ -7,3 +7,5 @@ __pycache__/
 # Ajan gunlukleri
 loop_*.log
 loop_stdout.log
+# macOS ölçüm sanal ortamı (playwright) — tools/record_trace.py için
+.venv-mac/

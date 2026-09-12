@@ -1,5 +1,7 @@
 package dev.dronewar.bench
 
+import dev.dronewar.rules.Config
+
 /**
  * The frame_budget reference scene, shared by every platform candidate so the three
  * measurements compare the same work: 54 enemies, 96 bullets, 64 particles, 3 city
@@ -8,15 +10,20 @@ package dev.dronewar.bench
 class Scene(seed: Int = 20260912) {
 
     companion object {
-        const val W = 480f
-        const val H = 800f
-        const val STEP_HZ = 120
-        const val STEP_S = 1f / STEP_HZ
+        // Shared with the game: read from :rules, never restated here.
+        @JvmField val W: Float = Config.W.toFloat()
+        @JvmField val H: Float = Config.H.toFloat()
+        @JvmField val STEP_HZ: Int = Config.SIM_HZ.toInt()
+        @JvmField val STEP_S: Float = 1f / STEP_HZ
+        @JvmField val BULLETS: Int = Config.FIRE.pool.toInt()
+        private val MAX_FRAME_S: Float = Config.MAX_DT.toFloat()
+
+        // Scene parameters of the frame_budget gate, not game constants. 54 enemies
+        // and the particle/layer counts define the benchmark workload; they have no
+        // CONFIG counterpart, so this is their one definition.
         const val ENEMIES = 54
-        const val BULLETS = 96
         const val PARTICLES = 64
         const val CITY_LAYERS = 3
-        private const val MAX_FRAME_S = 1f / 30f
     }
 
     /** Sprite slot indices the renderers map onto their own texture tables. */

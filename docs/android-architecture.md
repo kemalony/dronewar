@@ -104,8 +104,38 @@ geri dönüşsüz çatallanır. `Float` ile ±0 ulaşılamaz. `Float`'a çevrim 
 `java.lang.Math.*`'e derlenir; bu intrinsic'tir ve V8'den son ulp'ta ayrılabilir. V8'in
 `Math.sin`'i fdlibm'dir (`src/base/ieee754.cc`); OpenJDK'nın `StrictMath`'i de aynı
 fdlibm. Dolayısıyla: **`:core-sim` `StrictMath.*` çağırmak zorundadır ve `:core-sim`
-bytecode'unda herhangi bir `java/lang/Math` çağrısı derlemeyi kırar.** Portun en yüksek
-değerli tek kuralı budur.
+bytecode'unda herhangi bir `java/lang/Math` çağrısı derlemeyi kırar.**
+
+### R1'de ölçülen düzeltme: StrictMath gerekli ama YETMİYOR
+
+Yukarıdaki kural doğru ama eksikti. **V8 her transandantal için fdlibm kullanmıyor —
+`Math.hypot` bunlardan biri.** V8 iki argümanı büyüğünün mutlak değerine bölüyor,
+kareler toplamını Kahan telafisiyle biriktiriyor, sonra `sqrt(sum) * max` yapıyor;
+fdlibm'in `__ieee754_hypot`'u başka bir yol izliyor ve sıradan girdilerde son ulp'ta
+ayrılıyor.
+
+Bu teorik değil, ölçüldü. Oyuncu izini `StrictMath.hypot` ile oynatmak **385. adımda**
+çatallanıyor:
+
+```
+step 385 vy: expected 0xc078a065f2ff29a2 (-394.02488994286443)
+                 got 0xc078a065f2ff29a3 (-394.0248899428645)  [bit delta 1]
+```
+
+Naif `sqrt(x*x + y*y)` ise 384. adımda çatallanıyor. İkisi de yukarı+sağ çaprazında,
+hız tavanının devrede olduğu yerde.
+
+Kural şu hâlini alıyor: **`:core-sim` içindeki her matematik çağrısı
+`dev.dronewar.sim.JsMath` üzerinden geçer.** `JsMath` JS semantiğinin tek tanım yeri;
+çoğu fonksiyonda `StrictMath`'e devreder, ayrıldığı yerlerde (`hypot`) V8'in
+algoritmasını uygular. Yeni bir `Math.*` çağrısı portlanırken önce `JsMath`'e eklenir,
+doğrudan çağrılmaz.
+
+**Kapının sınırı — bunu bilerek taşıyoruz.** `no_math` bytecode taraması yalnızca
+`java/lang/Math` çağrılarını yakalar; "`StrictMath` çağrılmış ama V8 orada fdlibm
+kullanmıyor" durumunu **yakalayamaz**. Onu yalnızca altın iz yakalar. Yani her yeni
+transandantal için tek güvence, o kodu kapsayan bir iz kaydetmektir. Kapsanmayan bir
+`JsMath` fonksiyonu, kapı yeşilken sessizce yanlış olabilir.
 
 LCG portu: `Math.imul(s,1664525)+1013904223 >>> 0` → `Int` üzerinde
 `s = s * 1664525 + 1013904223` (sarma birebir aynı), sonra
@@ -152,8 +182,23 @@ gerçekten bağımsız: yalnızca `SimSnapshot` (R1'de donar) ve `:rules` tablol
 (R0'da donar) paylaşırlar, ortak dosyaya dokunmazlar. `:harness` ve `:assets` R1 ile
 paralel koşabilir; ikisi de sim içine bakmaz.
 
+## 6b. Alt ajana bağlam verme (ICM'in C'si)
+
+Plan "ajan repoyu keşfe ÇIKMAZ; bağlamı sen dar ve eksiksiz verirsin" diyor. Uygulanan
+biçim: orkestratör prompt'a kaynak kodu **yapıştırmaz**, ama okunacak yeri `dosya:satır`
+ve kapsam notuyla daraltır ("`src/units/Player.js:91` `update()` — yalnızca klavye
+dalı"). Sebep, kod yapıştırmanın iki maliyeti olması: kopyalarken bozma riski, ve
+ajanın kodun çevresindeki yorumları görememesi — bu repoda o yorumlar bedeli ödenmiş
+hataların kaydı (`STATE.md` "Geri Alma", `game.config.js` başlığı).
+
+Sınır şu: ajan **dosya arayarak** keşfe çıkmaz. Okuyacağı dosyaların listesi
+`AGENTS.md` ve görev dosyasında adlandırılmıştır; liste dışına çıkmak için
+`reports/requests/` üzerinden sorması gerekir.
+
 ## 7. En büyük üç risk
 
-1. **İz çatallanıyor ve sebebi bulunamıyor.** Önlem: StrictMath zorunluluğu bytecode taramasıyla; her iz satırında akış başına RNG çekiliş sayacı, böylece çatal tek koşumda tek fonksiyona indirgenir; ve varlıklar var olmadan önce 600 adımlık yalnız-oyuncu izini yeşile almak.
+1. **İz çatallanıyor ve sebebi bulunamıyor.** *(R1'de gerçekleşti ve önlem işe yaradı:
+   `Math.hypot` çatalı tek koşumda 385. adıma, `vy` alanına, tek bite indi.)*
+   Önlem: StrictMath zorunluluğu bytecode taramasıyla; her iz satırında akış başına RNG çekiliş sayacı, böylece çatal tek koşumda tek fonksiyona indirgenir; ve varlıklar var olmadan önce 600 adımlık yalnız-oyuncu izini yeşile almak.
 2. **Double hassasiyetli sim 2 ms sıcak kareyi tutturamıyor.** Önlem: struct-of-arrays `DoubleArray` havuzları (`bench-core/Scene.kt` bu deseni zaten kullanıyor), sıcak döngüde sıfır tahsis, ve `:harness` içinde 54 düşmanda adım başına ≤0.4 ms dayatan yalnız-sim JVM ölçümü — **R1'de**, ortada suçlanacak bir render katmanı yokken.
 3. **Biri bir kapıyı yeşile çevirmek için Kotlin sabitini oynatıyor** ve port sessizce aynı oyun olmaktan çıkıyor. Önlem: commit'li `golden/config.json`'a karşı `configParity`; yalnız-Kotlin sabit değişikliği derlemeyi kırar ve düzeltmeyi `src/`'ye zorlar, orada da web kapıları yeniden ölçer.

@@ -8,3 +8,5 @@ dependencyResolutionManagement {
 rootProject.name = "dronewar-bench"
 include(":bench-core", ":bench-canvas", ":bench-gl")
 include(":rules")
+include(":core-sim")
+include(":harness")
