@@ -321,8 +321,10 @@ class GameView(
         for (k in 0 until n) {
             val id = if (k % 2 == 0) Sprite.CLOUD_WISP else Sprite.CLOUD_PUFF
             val y = ((scroll + k * Config.CLOUDS.spacing) % span) - Config.CLOUDS.spacing
-            val w = atlas.width(id) * cloudScale[k].toFloat()
-            val h = atlas.height(id) * cloudScale[k].toFloat()
+            // drawW/drawH, not width/height: assets are stored at 2x their draw
+            // size, so the texel size would put a 512px wisp on a 480px screen.
+            val w = atlas.drawW(id) * cloudScale[k].toFloat()
+            val h = atlas.drawH(id) * cloudScale[k].toFloat()
             val lane = (k + 1) * Config.W / (n + 1)
             val cx = (lane + cloudShift[k] * Config.CLOUDS.hShift).toFloat() - w * 0.5f
             batch.drawRegion(

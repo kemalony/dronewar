@@ -20,6 +20,9 @@ object Sprite {
     const val BOOM_SMOKE = 6
     const val CLOUD_WISP = 7
     const val CLOUD_PUFF = 8
+
+    /** Assets are stored at 2x their draw size; one definition of that rule. */
+    const val ASSET_STORAGE_SCALE = 0.5f
     const val MUZZLE = 9
     const val TARGET = 10
     const val PU_WEAPON = 11
@@ -90,8 +93,21 @@ class Atlas {
     fun v0(id: Int) = v0[id]
     fun u1(id: Int) = u1[id]
     fun v1(id: Int) = v1[id]
+    /** Texel size of the sprite in the atlas. Rarely what a draw call wants. */
     fun width(id: Int) = pxW[id]
     fun height(id: Int) = pxH[id]
+
+    /**
+     * Size the sprite is meant to be DRAWN at, in the 480x800 logical space.
+     *
+     * Every asset in this project is stored at twice its draw size -- see the
+     * `source` field next to `width`/`height` in assets/manifest.json, and the
+     * note in tools/gen_cities.py. Drawing a sprite at its texel size therefore
+     * makes it exactly twice too big; that is what happened to the cloud layer,
+     * where a 512px wisp covered a 480px screen.
+     */
+    fun drawW(id: Int) = pxW[id] * Sprite.ASSET_STORAGE_SCALE
+    fun drawH(id: Int) = pxH[id] * Sprite.ASSET_STORAGE_SCALE
 
     fun glyphU0(i: Int) = gu0[i]
     fun glyphV0(i: Int) = gv0[i]
