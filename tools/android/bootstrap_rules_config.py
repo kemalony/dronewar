@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""One-shot bootstrap: split android/harness/golden/config.json into the five
+per-owner TOMLs under android/rules/config/.
+
+578 constants are not hand-transcribed. The golden dump carries, for every dotted
+key, both the encoded value and the web file that defined it; this script is the
+mechanical projection of those two maps onto one TOML per owning web file. Re-run
+it whenever the golden dump is regenerated (`node tools/dump_config.js`) so the
+split stays reproducible and reviewable instead of being a pile of typing.
+
+Encoding in the golden dump:
+    f64:0x<16 hex>  raw IEEE-754 float64 bit pattern
+    s:<text>        string
+    b:true|false    boolean
+    i:<n>           array length (the `.length` sibling of an array's elements)
+
+Emitted TOML shape (see android/rules/build.gradle.kts for the consumer):
+
+    [owner]
+    package = "core"
+    source  = "src/core/CONFIG.js"
+
+    [config]
+    SIM_HZ = 120.0
+    BOSS.fanMs.0 = 1100.0
+    BOSS.fanMs.length = 5
+
+Every golden key becomes exactly one flat dotted key under [config], so the
+TOML key set and the golden key set are the same set and the ownership gate
+compares at golden-key granularity. Usage: python3 tools/android/bootstrap_rules_config.py
+"""
+
+import json
+import os
+import struct
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
+GOLDEN = os.path.join(ROOT, "android", "harness", "golden", "config.json")
+OUT_DIR = os.path.join(ROOT, "android", "rules", "config")
+
+# web source file -> (toml basename, owner package name)
+OWNERS = {
+    "src/core/CONFIG.js": ("core.toml", "core"),
+    "src/units/units.config.js": ("units.toml", "units"),
+    "src/audio/audio.config.js": ("audio.toml", "audio"),
+    "src/fx/fx.config.js": ("fx.toml", "fx"),
+    "src/game/game.config.js": ("game.toml", "game"),
+}
+
+
+def decode_f64(hexstr):
+    """'0x400921fb54442d18' -> the exact double it names."""
+    bits = int(hexstr, 16)
+    return struct.unpack(">d", bits.to_bytes(8, "big"))[0]
+
+
+def toml_float(value, hexstr):
+    """Shortest decimal that parses back to the identical bit pattern.
+
+    repr() on CPython is the shortest round-tripping decimal, and both
+    Double.parseDouble and Kotlin's literal parsing are correctly rounded, so
+    the double the JVM ends up with has the same 64 bits. Verified below rather
+    than assumed -- a silent one-ulp drift here is exactly the class of bug the
+    parity gate exists to catch, and it would be baked into the source TOML.
+    """
+    text = repr(value)
+    if "." not in text and "e" not in text and "E" not in text and "inf" not in text and "nan" not in text:
+        text += ".0"  # TOML: no decimal point means integer, and we want float64
+    if struct.pack(">d", float(text)) != struct.pack(">d", value):
+        raise SystemExit("float does not round-trip: %s -> %s" % (hexstr, text))
+    return text
+
+
+def toml_string(text):
+    out = text.replace("\\", "\\\\").replace('"', '\\"')
+    for raw, esc in (("\n", "\\n"), ("\r", "\\r"), ("\t", "\\t")):
+        out = out.replace(raw, esc)
+    return '"%s"' % out
+
+
+def encode(golden_value):
+    if golden_value.startswith("f64:"):
+        return toml_float(decode_f64(golden_value[4:]), golden_value[4:])
+    if golden_value.startswith("s:"):
+        return toml_string(golden_value[2:])
+    if golden_value.startswith("b:"):
+        flag = golden_value[2:]
+        if flag not in ("true", "false"):
+            raise SystemExit("bad boolean encoding: %r" % golden_value)
+        return flag
+    if golden_value.startswith("i:"):
+        return str(int(golden_value[2:]))
+    raise SystemExit("unknown value encoding: %r" % golden_value)
+
+
+def sort_key(dotted):
+    """Group siblings together, order array elements 0,1,2,... not 0,1,10,2,
+    and park the `length` marker after the elements it counts."""
+    out = []
+    for seg in dotted.split("."):
+        if seg.isdigit():
+            out.append((1, int(seg), ""))
+        elif seg == "length":
+            out.append((2, 0, ""))
+        else:
+            out.append((0, 0, seg))
+    return tuple(out)
+
+
+def main():
+    with open(GOLDEN, encoding="utf-8") as handle:
+        golden = json.load(handle)
+
+    values, owners = golden["values"], golden["owners"]
+    if len(values) != golden["count"] or set(values) != set(owners):
+        raise SystemExit("golden dump is inconsistent: values/owners/count disagree")
+
+    buckets = {source: [] for source in OWNERS}
+    for key in sorted(values, key=sort_key):
+        source = owners[key]
+        if source not in buckets:
+            raise SystemExit("golden names an unknown owning file: %r" % source)
+        buckets[source].append(key)
+
+    os.makedirs(OUT_DIR, exist_ok=True)
+    total = 0
+    for source, (basename, package) in OWNERS.items():
+        keys = buckets[source]
+        lines = [
+            "# Generated by tools/android/bootstrap_rules_config.py from",
+            "# android/harness/golden/config.json (webSha %s)." % golden["webSha"],
+            "# Owning web source: %s -- %d keys." % (source, len(keys)),
+            "# Editing a value here without changing the web source breaks :rules:test.",
+            "",
+            "[owner]",
+            'package = "%s"' % package,
+            'source = "%s"' % source,
+            "",
+            "[config]",
+        ]
+        previous_root = None
+        for key in keys:
+            root = key.split(".")[0]
+            if previous_root is not None and root != previous_root:
+                lines.append("")
+            previous_root = root
+            lines.append("%s = %s" % (key, encode(values[key])))
+        lines.append("")
+        path = os.path.join(OUT_DIR, basename)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lines))
+        total += len(keys)
+        print("wrote %-11s %3d keys  (%s)" % (basename, len(keys), source))
+
+    print("total %d keys across %d files" % (total, len(OWNERS)))
+    if total != golden["count"]:
+        raise SystemExit("key count mismatch: wrote %d, golden has %d" % (total, golden["count"]))
+
+
+if __name__ == "__main__":
+    sys.exit(main())
