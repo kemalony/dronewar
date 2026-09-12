@@ -27,6 +27,30 @@ const MIX_DEFAULTS = {
   priorityReserve: 4,        // oncelikli seslerin ek yuva payi
 };
 
+/* Ornek bankasi yedek sabitleri (round 25). Asil degerler
+   CONFIG.SOUND.sfx altinda; burasi CONFIG eksik/kismi ise devreye giren
+   guvenli taban. Tablo burada da tam duruyor cunku audio.config.js dususe
+   gecerse (sira hatasi, ezilen anahtar) ornekler SESSIZCE prosedurele
+   dusmesin — bu paket bunu iki kez yasadi. */
+const SFX_DEFAULTS = {
+  enabled: true, gain: 1.0, chunk: 3,
+  detuneCents: 70, gainJitter: 0.14, fadeIn: 0.0015, fadeOut: 0.012,
+  hoverName: 'hover', hoverGain: 0.20, hoverRateBase: 0.70, hoverRateSpan: 0.34,
+  voices: {
+    shot:      { names: ['shot_0', 'shot_1', 'shot_2', 'shot_3'], gain: 0.42, prio: true, send: 0.05, pan: 0.24, spread: 70 },
+    eshot:     { names: ['eshot_0', 'eshot_1'], gain: 0.34, send: 0.04, pan: 0.50, spread: 90 },
+    bshot:     { names: ['bshot_0'], gain: 0.55, prio: true, send: 0.12, spread: 60 },
+    hit:       { names: ['hit_0', 'hit_1', 'hit_2'], gain: 0.32, send: 0.05, pan: 0.40, spread: 110 },
+    groundHit: { names: ['hit_0', 'hit_1', 'hit_2'], gain: 0.38, send: 0.07, pan: 0.30, det: -400, spread: 90 },
+    gdeath:    { names: ['gdeath'], gain: 0.60, prio: true, send: 0.28, pan: 0.24, spread: 70 },
+    flak:      { names: ['flak'], gain: 0.44, send: 0.14, pan: 0.60, spread: 120 },
+    boom:      { names: ['boom_0', 'boom_1'], gain: 0.56, prio: true, send: 0.22, pan: 0.30, spread: 100 },
+    warn:      { names: ['warn'], gain: 0.50, prio: true, send: 0.25, spread: 0 },
+    stage:     { names: ['stage'], gain: 0.50, prio: true, send: 0.20, spread: 0 },
+    victory:   { names: ['victory'], gain: 0.50, prio: true, send: 0.30, spread: 0 },
+  },
+};
+
 class Sound {
   constructor() {
     this.ctx = null;           // AudioContext (ilk etkilesimde olusturulur)
@@ -53,6 +77,20 @@ class Sound {
        DOKUNMAZ — dokunsaydi altin iz catallanirdi. */
     this._seed = 0x1a2b3c4d | 0;
     this._varN = 0;
+    /* ------------------------------------------- ornek bankasi (round 25)
+       Gomulu base64 Ogg -> AudioBuffer. `unlock()`te asenkron cozulur; o ana
+       kadar (ve bir ornek cozulemezse) PROSEDUREL ses devrededir. */
+    this._bank = {};           // ad -> AudioBuffer
+    this._bankOn = false;      // cozme baslatildi mi (tek sefer)
+    this._bankFail = 0;        // cozulemeyen ornek sayisi
+    /* Varyant sirasi. `_varN` gibi: yalniz Sound okur/yazar, sim ne okur ne
+       yazar, Math.random YOK. Hash DEGIL saf sira — hash ile art arda ayni
+       varyanta dusmek mumkundu, sira ile dort atista dort ornek garanti. */
+    this._rotN = 0;
+    this._lastSrc = '';        // 'sample' | 'proc' — olcum kancasi
+    this._lastVar = '';        // calinan ornegin adi
+    this._hoverOld = null;     // prosedurel -> ornek gecisinde sonen eski hover
+    this._hoverOldT = null;
     this.music = new Music();  // katmanli prosedurel muzik (round 19)
     this._musicWasPlaying = false;
     this.music.attach(this);
@@ -82,10 +120,161 @@ class Sound {
       return c;
     } catch (e) { return null; }
   }
+  /* ------------------------------------------------ ornek bankasi (round 25)
+     Olcum kancalari (tools/gate_sfx.py sozlesmesi). */
+  bankSize() { let n = 0; for (const k in this._bank) if (this._bank[k]) n++; return n; }
+  bankFailed() { return this._bankFail; }
+  lastSource() { return this._lastSrc; }
+  lastVariant() { return this._lastVar; }
+  _sfx() {
+    const s = (typeof CONFIG !== 'undefined' && CONFIG.SOUND && CONFIG.SOUND.sfx) || null;
+    return s || SFX_DEFAULTS;
+  }
+  _voice(k) {
+    const S = this._sfx();
+    return (S.voices && S.voices[k]) || SFX_DEFAULTS.voices[k] || null;
+  }
+  /* base64 -> Uint8Array. atob tarayicida her zaman var; yine de cagiran
+     try icinde tutuluyor (bir ornek patlarsa banka tumuyle dusmesin). */
+  _b64(s) {
+    const bin = atob(s);
+    const n = bin.length;
+    const u8 = new Uint8Array(n);
+    for (let i = 0; i < n; i++) u8[i] = bin.charCodeAt(i);
+    return u8;
+  }
+  /* Bankayi coz. Idempotent; ctx yoksa hicbir sey yapmaz.
+     PARCALI: 18 ornegin base64 cozumu tek karede yapilirsa ilk dokunusta
+     gorunur bir takilma olur. `chunk` kadarini isler, kalanini bir sonraki
+     goreve birakir. decodeAudioData zaten asenkron ve ctx ASKIDAYKEN DE
+     calisir — autotest'te de banka dolar. */
+  _bankStart() {
+    if (this._bankOn || !this.ctx) return;
+    const S = this._sfx();
+    if (S.enabled === false) return;
+    if (typeof SFX_DATA === 'undefined' || !SFX_DATA) return;
+    this._bankOn = true;
+    let names;
+    try { names = Object.keys(SFX_DATA); } catch (e) { return; }
+    const step = Math.max(1, S.chunk || 3);
+    const run = (i) => {
+      for (let k = 0; k < step && i + k < names.length; k++) {
+        this._decode(names[i + k], SFX_DATA[names[i + k]]);
+      }
+      if (i + step < names.length) setTimeout(() => run(i + step), 0);
+    };
+    run(0);
+  }
+  /* Tek ornek. `done` bayragi SART: Chrome hem geri cagriyi cagirir hem de
+     sozu cozer — ikisini de saymak banka boyutunu ikiye katlardi. */
+  _decode(name, b64) {
+    let done = false;
+    const ok = (buf) => {
+      if (done) return;
+      done = true;
+      if (buf) { this._bank[name] = buf; this._bankReady(name); }
+      else this._bankFail++;
+    };
+    const bad = () => { if (done) return; done = true; this._bankFail++; };
+    try {
+      const u8 = this._b64(b64);
+      const p = this.ctx.decodeAudioData(u8.buffer, ok, bad);
+      if (p && p.then) p.then(ok, bad);
+    } catch (e) { bad(); }
+  }
+  /* Bir ornek hazir oldu. Hover devredeyse ve hala PROSEDUREL calisiyorsa
+     hemen gecise zorla — yoksa motor ugultusu, oyuncu hizini degistirene
+     kadar (hover() yeniden cagrilana kadar) sentetik kalirdi. */
+  _bankReady(name) {
+    const S = this._sfx();
+    if (name !== (S.hoverName || 'hover')) return;
+    if (this.hoverOn) { try { this.hover(this.hoverLevel); } catch (e) {} }
+  }
+  /* Sirayla varyant sec. Yalniz COZULMUS ornekler arasindan secer; banka
+     yarim doluyken de dogru calisir. Hicbiri hazir degilse null. */
+  _pick(list) {
+    if (!list || !list.length) return null;
+    let n = 0;
+    for (let i = 0; i < list.length; i++) if (this._bank[list[i]]) n++;
+    if (!n) return null;
+    this._rotN = (this._rotN + 1) & 0x3fffffff;
+    let k = this._rotN % n;
+    for (let i = 0; i < list.length; i++) {
+      if (!this._bank[list[i]]) continue;
+      if (k === 0) return list[i];
+      k--;
+    }
+    return null;
+  }
+  /* Ornek calar. Zincir prosedurel seslerle AYNI: kaynak -> zarf -> yuva
+     -> [pan] -> _fxBus -> master -> limiter (yuvayi `_gate` kurar).
+     opt: {det, delay, prio, pan, send}. det = cent cinsinden perde kaydirma;
+     AudioBufferSourceNode.detune her tarayicida yok, playbackRate her yerde
+     var — perdeyle birlikte sure de kayar, atis varyasyonunda istenen sey. */
+  _sample(name, vol, target, opt) {
+    const o = opt || {};
+    const buf = this._bank[name];
+    if (!buf) return false;
+    const g = target || this._gate(o);
+    if (!g) return false;
+    this._hold(g);
+    try {
+      const S = this._sfx();
+      const t = this.ctx.currentTime + (o.delay || 0);
+      const rate = o.det ? Math.pow(2, o.det / 1200) : 1;
+      const dur = Math.max(0.02, buf.duration / rate);
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      if (rate !== 1) src.playbackRate.value = rate;
+      /* Kayit zaten kendi atagiyla basliyor; burada yalniz olasi DC sicramasi
+         icin mikro rampa var (prosedurel tarafla ayni gerekce: sifirdan tepe
+         degere ANINDA sicramak genis bantli bir tik uretir). Arasi DUZ —
+         ustel sonum uygulansa kaydin dogal kuyrugu ezilirdi. */
+      const a = Math.min(S.fadeIn == null ? 0.0015 : S.fadeIn, dur * 0.25);
+      const r = Math.min(S.fadeOut == null ? 0.012 : S.fadeOut, dur * 0.25);
+      const v = Math.max(0.0002, vol);
+      const env = this.ctx.createGain();
+      env.gain.setValueAtTime(0, t);
+      env.gain.linearRampToValueAtTime(v, t + a);
+      env.gain.setValueAtTime(v, t + dur - r);
+      env.gain.linearRampToValueAtTime(0, t + dur);
+      src.connect(env); env.connect(g);
+      src.start(t);
+      src.stop(t + dur + 0.005);
+      src.onended = () => this._release(g);
+      return true;
+    } catch (err) { this._release(g); return false; }
+  }
+  /* Olay icin ornek dene. `true` = ornek YOLU secildi (yuva butcesi doluysa
+     ses duyulmaz ama prosedurel yedek de yuva bulamazdi — cift calma yok).
+     `false` = banka hazir degil; cagiran prosedurel sese duser.
+     v, w: `_var()`den gelen iki deterministik 0..1 sapma. */
+  _sfxPlay(key, v, w) {
+    const S = this._sfx();
+    if (S.enabled === false) return false;
+    const V = this._voice(key);
+    if (!V) return false;
+    const name = this._pick(V.names);
+    if (!name) return false;
+    this._lastSrc = 'sample';
+    this._lastVar = name;
+    const spread = V.spread == null ? (S.detuneCents || 0) : V.spread;
+    const jit = S.gainJitter == null ? 0 : S.gainJitter;
+    const scale = S.gain == null ? 1 : S.gain;
+    this._sample(name, (V.gain || 0.4) * scale * (1 + (w - 0.5) * 2 * jit), null, {
+      det: (V.det || 0) + (v - 0.5) * 2 * spread,
+      prio: !!V.prio,
+      send: V.send || 0,
+      pan: (v - 0.5) * (V.pan || 0),
+    });
+    return true;
+  }
+  _proc() { this._lastSrc = 'proc'; this._lastVar = ''; }
   /* Ilk kullanici etkilesinde cagrilir. Askida kalabilir — hata YOK. */
   unlock() {
     if (this.ctx) {
       if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+      this._bankStart();   // idempotent: ilk turda basladiysa hicbir sey yapmaz
       return;
     }
     try {
@@ -112,6 +301,9 @@ class Sound {
       if (this._fxBus) this._fxBus.connect(this.master);
       this._buildSpace();
       this._buildNoise();
+      /* AYRI degil ama SON: banka cozulemese bile (kodek yok, bellek) yukaridaki
+         zincir kurulmus olur ve prosedurel ses calmaya devam eder. */
+      this._bankStart();
     } catch (e) { this.ctx = null; }
     // Muzik caliyorduysa (orn. mute sonrasi unlock) yeniden baslat.
     if (this.music && !this.muted && this._musicWasPlaying) this.music.start();
@@ -303,6 +495,23 @@ class Sound {
   /* Olcum kancasi: hover DEVREDE mi? Sesin duyulup duyulmadigindan bagimsiz
      (autotest'te ctx askida, mute'ta sessiz — bayrak yine dogruyu soyler). */
   hoverActive() { return this.hoverOn; }
+  /* Hover ornegi hazir mi? (round 25) Hazirsa gercek motor KAYDI donguye
+     alinir; degilse asagidaki prosedurel osilator yigini devrede kalir. */
+  _hoverBuf() {
+    const S = this._sfx();
+    if (S.enabled === false) return null;
+    return this._bank[S.hoverName || 'hover'] || null;
+  }
+  _hoverRate(lv) {
+    const S = this._sfx();
+    const b = S.hoverRateBase == null ? SFX_DEFAULTS.hoverRateBase : S.hoverRateBase;
+    const sp = S.hoverRateSpan == null ? SFX_DEFAULTS.hoverRateSpan : S.hoverRateSpan;
+    return Math.max(0.25, b + sp * lv);
+  }
+  _hoverGain(lv) {
+    const S = this._sfx();
+    return (S.hoverGain == null ? SFX_DEFAULTS.hoverGain : S.hoverGain) * lv;
+  }
   hover(level) {
     const H = this._hoverCfg();
     const lv = Math.max(H.levelMin, Math.min(H.levelMax, level || 1));
@@ -313,48 +522,101 @@ class Sound {
     if (!this._ready()) { this._hoverFade(); return; }
     try {
       const t = this.ctx.currentTime;
-      const baseFreq = H.baseFreq * lv;
-      const harm = H.harmonics || HOVER_DEFAULTS.harmonics;
       // Sonumlenmekte olan bir hover varsa yikimi iptal et, ayni dugumleri geri ac.
       if (this._hoverStop) { clearTimeout(this._hoverStop); this._hoverStop = null; }
-      // Mevcut hover varsa parametreleri guncelle (YENIDEN OLUSTURMA — osilatör yigilmaz).
-      if (this._hover) {
-        const h = this._hover;
-        const n = Math.min(h.oscs.length, harm.length);
-        for (let i = 0; i < n; i++) {
-          try { h.oscs[i].frequency.setTargetAtTime(baseFreq * harm[i].mult, t, H.glide); } catch(e) {}
-        }
-        try { h.env.gain.setTargetAtTime(H.gain * lv, t, H.gainGlide); } catch(e) {}
-        try { h.lfoGain.gain.setTargetAtTime(H.amDepth * lv, t, H.gainGlide); } catch(e) {}
-        return;
+      const buf = this._hoverBuf();
+      const h = this._hover;
+      // Mevcut hover varsa parametreleri guncelle (YENIDEN OLUSTURMA — yigilmaz).
+      if (h) {
+        if (h.kind === 'sample') { this._hoverTuneSample(h, lv, t, H); return; }
+        if (!buf) { this._hoverTuneProc(h, lv, t, H); return; }
+        /* Banka unlock'tan SONRA doluyor: hover o ana kadar prosedurel
+           basladiysa burada kayda gecilir. Eskisi sonerken yenisi aciliyor
+           (capraz gecis) — sert yikim bir tik duyururdu. */
+        this._hoverRetire(h, H, t);
       }
-      // Ilk kurulum: harmonik osilatörler + am modülasyonu (rotor hissi).
-      const env = this.ctx.createGain();
-      env.gain.value = 0;
-      env.connect(this.master);
-      const oscs = [], oscGains = [];
-      for (let i = 0; i < harm.length; i++) {
-        const hh = harm[i];
-        const osc = this.ctx.createOscillator();
-        osc.type = i === 0 ? 'sawtooth' : 'sine';
-        osc.frequency.value = baseFreq * hh.mult;
-        const og = this.ctx.createGain();
-        og.gain.value = hh.vol;
-        osc.connect(og); og.connect(env);
-        osc.start(t);
-        oscs.push(osc); oscGains.push(og);
-      }
-      // Hafif am modülasyonu (~28 Hz) — rotor dönme hissi.
-      const lfo = this.ctx.createOscillator();
-      lfo.type = 'sine'; lfo.frequency.value = H.amHz;
-      const lfoGain = this.ctx.createGain();
-      lfoGain.gain.value = H.amDepth * lv;
-      lfo.connect(lfoGain); lfoGain.connect(env.gain);
-      lfo.start(t);
-      this._hover = { oscs, oscGains, env, lfo, lfoGain };
-      // Fade-in.
-      env.gain.setTargetAtTime(H.gain * lv, t, H.attack);
+      if (buf) this._hoverBuildSample(buf, lv, t, H);
+      else this._hoverBuildProc(lv, t, H);
     } catch (e) { this._hoverTeardown(); }
+  }
+  /* --- ornek hover: tek dongulu kaynak.
+     `hover` ornegi bas/son sureksizligi 0.021 ile olculerek secildi (diger
+     motor kayitlarinda 0.185-0.233) — dikissiz donen tek kayit bu.
+     _fxBus BYPASS: yukaridaki gerekce (her atista motor pompalanmasin). */
+  _hoverBuildSample(buf, lv, t, H) {
+    const env = this.ctx.createGain();
+    env.gain.value = 0;
+    env.connect(this.master);
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    src.loopStart = 0;
+    src.loopEnd = buf.duration;
+    src.playbackRate.value = this._hoverRate(lv);
+    src.connect(env);
+    src.start(t);
+    this._hover = { kind: 'sample', src, env };
+    env.gain.setTargetAtTime(this._hoverGain(lv), t, H.attack);   // fade-in
+  }
+  _hoverTuneSample(h, lv, t, H) {
+    try { h.src.playbackRate.setTargetAtTime(this._hoverRate(lv), t, H.glide); } catch (e) {}
+    try { h.env.gain.setTargetAtTime(this._hoverGain(lv), t, H.gainGlide); } catch (e) {}
+  }
+  /* --- prosedurel hover (yedek): harmonik osilatörler + am modülasyonu. */
+  _hoverBuildProc(lv, t, H) {
+    const baseFreq = H.baseFreq * lv;
+    const harm = H.harmonics || HOVER_DEFAULTS.harmonics;
+    const env = this.ctx.createGain();
+    env.gain.value = 0;
+    env.connect(this.master);
+    const oscs = [], oscGains = [];
+    for (let i = 0; i < harm.length; i++) {
+      const hh = harm[i];
+      const osc = this.ctx.createOscillator();
+      osc.type = i === 0 ? 'sawtooth' : 'sine';
+      osc.frequency.value = baseFreq * hh.mult;
+      const og = this.ctx.createGain();
+      og.gain.value = hh.vol;
+      osc.connect(og); og.connect(env);
+      osc.start(t);
+      oscs.push(osc); oscGains.push(og);
+    }
+    // Hafif am modülasyonu (~28 Hz) — rotor dönme hissi.
+    const lfo = this.ctx.createOscillator();
+    lfo.type = 'sine'; lfo.frequency.value = H.amHz;
+    const lfoGain = this.ctx.createGain();
+    lfoGain.gain.value = H.amDepth * lv;
+    lfo.connect(lfoGain); lfoGain.connect(env.gain);
+    lfo.start(t);
+    this._hover = { kind: 'proc', oscs, oscGains, env, lfo, lfoGain };
+    env.gain.setTargetAtTime(H.gain * lv, t, H.attack);   // fade-in
+  }
+  _hoverTuneProc(h, lv, t, H) {
+    const baseFreq = H.baseFreq * lv;
+    const harm = H.harmonics || HOVER_DEFAULTS.harmonics;
+    const n = Math.min(h.oscs.length, harm.length);
+    for (let i = 0; i < n; i++) {
+      try { h.oscs[i].frequency.setTargetAtTime(baseFreq * harm[i].mult, t, H.glide); } catch (e) {}
+    }
+    try { h.env.gain.setTargetAtTime(H.gain * lv, t, H.gainGlide); } catch (e) {}
+    try { h.lfoGain.gain.setTargetAtTime(H.amDepth * lv, t, H.gainGlide); } catch (e) {}
+  }
+  /* Eski hover'i sondur ve yuvayi hemen bosalt — cagiran hemen ardindan
+     yenisini kurar. Ayri zamanlayici: `_hoverStop` "SU ANKI hover sonuyor"
+     demektir, ikisi karisirsa stopHover sirasinda yeni hover kaliyordu. */
+  _hoverRetire(h, H, t) {
+    this._hover = null;
+    this._hoverOldKill();          // bekleyen daha eski bir tane varsa hemen git
+    this._hoverOld = h;
+    try { h.env.gain.setTargetAtTime(0, t, H.release); } catch (e) {}
+    this._hoverOldT = setTimeout(() => { this._hoverOldT = null; this._hoverOldKill(); }, H.stopMs);
+  }
+  _hoverOldKill() {
+    if (this._hoverOldT) { clearTimeout(this._hoverOldT); this._hoverOldT = null; }
+    const h = this._hoverOld;
+    if (!h) return;
+    this._hoverOld = null;
+    this._hoverKill(h);
   }
   /* Idempotent: arka arkaya cagrilabilir, ikinci cagri hicbir sey yapmaz. */
   stopHover() {
@@ -375,16 +637,21 @@ class Sound {
       this._hoverTeardown();
     }, H.stopMs);
   }
-  /* Tum hover dugumlerini durdur + kopar. Cagrilmasi her zaman guvenli. */
+  /* Tum hover dugumlerini durdur + kopar. Cagrilmasi her zaman guvenli.
+     Iki bicimi de bilir: ornek ({src,env}) ve prosedurel ({oscs,...}). */
   _hoverTeardown() {
     if (this._hoverStop) { clearTimeout(this._hoverStop); this._hoverStop = null; }
+    this._hoverOldKill();
     const h = this._hover;
     if (!h) return;
     this._hover = null;
-    const kill = (n) => { try { if (n.stop) n.stop(); } catch(e) {} try { n.disconnect(); } catch(e) {} };
-    try { h.oscs.forEach(kill); } catch(e) {}
-    try { h.oscGains.forEach(kill); } catch(e) {}
-    kill(h.lfo); kill(h.lfoGain); kill(h.env);
+    this._hoverKill(h);
+  }
+  _hoverKill(h) {
+    const kill = (n) => { if (!n) return; try { if (n.stop) n.stop(); } catch(e) {} try { n.disconnect(); } catch(e) {} };
+    try { if (h.oscs) h.oscs.forEach(kill); } catch(e) {}
+    try { if (h.oscGains) h.oscGains.forEach(kill); } catch(e) {}
+    kill(h.src); kill(h.lfo); kill(h.lfoGain); kill(h.env);
   }
   /* --------------------------------------------------- oyun olaylari
      Her olay TEK ses yuvasi tutar; katmanlar ayni `g` uzerine binir.
@@ -398,6 +665,10 @@ class Sound {
      kayar; ayni dalga formunun saniyede bes kez tekrari yorucuydu. */
   playerShot() {
     const v = this._var(), w = this._var();
+    /* Round 25: once GERCEK KAYIT (dort varyant sirayla + kucuk perde/genlik
+       sapmasi). Banka hazir degilse asagidaki prosedurel ses calar. */
+    if (this._sfxPlay('shot', v, w)) return;
+    this._proc();
     const g = this._gate({ prio: true, send: 0.05, pan: (v - 0.5) * 0.24 });
     if (!g) return;
     this._hold(g);
@@ -409,7 +680,9 @@ class Sound {
   }
   /* Dusman atisi: kuru, alcak, kisa; genis panorama (ekranin baska yerinden). */
   enemyShot() {
-    const v = this._var();
+    const v = this._var(), w = this._var();
+    if (this._sfxPlay('eshot', v, w)) return;
+    this._proc();
     const g = this._gate({ send: 0.04, pan: (v - 0.5) * 0.5 });
     if (!g) return;
     this._hold(g);
@@ -419,7 +692,9 @@ class Sound {
   }
   /* Boss atisi: agir, alcak, gecikmeli govdeli. */
   bossShot() {
-    const v = this._var();
+    const v = this._var(), w = this._var();
+    if (this._sfxPlay('bshot', v, w)) return;
+    this._proc();
     const g = this._gate({ prio: true, send: 0.12 });
     if (!g) return;
     this._hold(g);
@@ -430,7 +705,9 @@ class Sound {
   /* Isabet: metalik, cok kisa. Gurultu tamponuna her seferinde farkli yerden
      girilir — art arda isabetler ayni "tik"in kopyasi gibi duyulmasin. */
   hit() {
-    const v = this._var();
+    const v = this._var(), w = this._var();
+    if (this._sfxPlay('hit', v, w)) return;
+    this._proc();
     const g = this._gate({ send: 0.05, pan: (v - 0.5) * 0.4 });
     if (!g) return;
     this._hold(g);
@@ -440,7 +717,9 @@ class Sound {
   }
   /* Kara hedefine isabet: metalik, tok, alcak perdeli (hit'ten daha alcak). */
   groundHit() {
-    const v = this._var();
+    const v = this._var(), w = this._var();
+    if (this._sfxPlay('groundHit', v, w)) return;
+    this._proc();
     const g = this._gate({ send: 0.07, pan: (v - 0.5) * 0.3 });
     if (!g) return;
     this._hold(g);
@@ -452,7 +731,9 @@ class Sound {
      Sub, hover ugultusunun (85 Hz) ALTINA kayarak biter; sabit vizilti ile
      patlamanin govdesi ayni bantta birbirini bulandirmasin diye. */
   groundDeath() {
-    const v = this._var();
+    const v = this._var(), w = this._var();
+    if (this._sfxPlay('gdeath', v, w)) return;
+    this._proc();
     const g = this._gate({ prio: true, send: 0.28, pan: (v - 0.5) * 0.24 });
     if (!g) return;
     this._hold(g);
@@ -465,7 +746,9 @@ class Sound {
   }
   /* Uckasavar patlamasi: kuru, kisa hava patlamasi — parlak baslar, donuklasir. */
   flak() {
-    const v = this._var();
+    const v = this._var(), w = this._var();
+    if (this._sfxPlay('flak', v, w)) return;
+    this._proc();
     const g = this._gate({ send: 0.14, pan: (v - 0.5) * 0.6 });
     if (!g) return;
     this._hold(g);
@@ -476,7 +759,9 @@ class Sound {
   /* Dusman olumu: on uc (parlak), govde (alcalan gurultu), sub, dusus kuyrugu.
      Dortu de TEK yuvada — eskiden uc ayri yuva yiyordu. */
   enemyDeath() {
-    const v = this._var();
+    const v = this._var(), w = this._var();
+    if (this._sfxPlay('boom', v, w)) return;
+    this._proc();
     const g = this._gate({ prio: true, send: 0.22, pan: (v - 0.5) * 0.3 });
     if (!g) return;
     this._hold(g);
@@ -489,6 +774,9 @@ class Sound {
   /* Uyari: iki notali korna. Ikinci ses ses saatinden zamanlanir (setTimeout
      yerine) ve hafif detune ikizle kalinlastirilir. */
   bossWarn() {
+    const v = this._var(), w = this._var();
+    if (this._sfxPlay('warn', v, w)) return;
+    this._proc();
     const g = this._gate({ prio: true, send: 0.25 });
     if (!g) return;
     this._hold(g);
@@ -499,6 +787,9 @@ class Sound {
     this._release(g);
   }
   stageChange() {
+    const v = this._var(), w = this._var();
+    if (this._sfxPlay('stage', v, w)) return;
+    this._proc();
     const g = this._gate({ prio: true, send: 0.20 });
     if (!g) return;
     this._hold(g);
@@ -508,6 +799,9 @@ class Sound {
     this._release(g);
   }
   victory() {
+    const v = this._var(), w = this._var();
+    if (this._sfxPlay('victory', v, w)) return;
+    this._proc();
     const g = this._gate({ prio: true, send: 0.30 });
     if (!g) return;
     this._hold(g);

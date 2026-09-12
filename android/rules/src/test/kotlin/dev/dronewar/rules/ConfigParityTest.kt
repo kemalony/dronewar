@@ -146,9 +146,9 @@ class ConfigParityTest {
             mapOf(
                 "src/core/CONFIG.js" to 456,
                 "src/units/units.config.js" to 70,
-                "src/audio/audio.config.js" to 88,
+                "src/audio/audio.config.js" to 178,
                 "src/fx/fx.config.js" to 38,
-                "src/game/game.config.js" to 11,
+                "src/game/game.config.js" to 37,
             ),
             perFile,
             "golden ownership split changed; regenerate config/*.toml with " +

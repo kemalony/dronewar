@@ -54,6 +54,66 @@ Object.assign(CONFIG.SOUND, {
                                // maxConcurrent USTUNE ek yuva. 0 = eski davranis:
                                // 8 yuva dolunca oyuncunun atis sesi de duserdi.
     }, CONFIG.SOUND.mix || {}),
+
+    /* ---------------------------------------------------------------- sfx
+       Round 25: GERCEK KAYITLI ORNEKLER. Cikartmali sentez (osilator ->
+       zarf -> filtre) bir tavana carpti — "web'deki sesler cok basitti".
+       Banka `src/audio/sfx.data.js` icinde base64 Ogg/Vorbis olarak GOMULU
+       (22 kHz mono). Neden gomulu: file:// altinda fetch/XHR bloklu, disaridan
+       yuklenen ses `createMediaElementSource` ile baglaninca SESSIZ geliyor
+       (tainted, tuval `toDataURL` taintiyle ayni sinif). atob + decodeAudioData
+       hic agdan gecmez: olculen analiz tepe degeri 0.506, ve WebAudio'nun tam
+       kontrolu (ust uste binme, perde, pan, kompresor zinciri) korunur.
+
+       Ornekler ayni mix zincirinden gecer: kaynak -> zarf -> yuva -> [pan]
+       -> fxBus -> master -> limiter. Tek istisna hover: o KASTEN dogrudan
+       master'a baglidir (yukaridaki mix notuna bak).
+
+       Banka cozulene kadar VE bir ornek cozulemezse prosedurel ses devrede
+       kalir — sessizlik sentetik biptan kotudur.
+
+       Kaynak: Kenney 'Sci-Fi Sounds' — CC0 (kamu mali). */
+    sfx: Object.assign({
+        enabled: true,         // false = tumuyle prosedurel sese don
+        gain: 1.0,             // banka geneli kazanc olcegi
+        chunk: 3,              // tek turda base64'ten cozulen ornek sayisi
+                               // (acilista ana is parcaciği kitlenmesin)
+        detuneCents: 70,       // varsayilan +-perde sapmasi (cent)
+        gainJitter: 0.14,      // +-genlik sapmasi (oran)
+        fadeIn: 0.0015,        // tik onleyici mikro atak (s) — SIFIR DEGIL
+        fadeOut: 0.012,        // kuyruk sonu inisi (s)
+
+        /* hover: tek surekli dongu. 'hover' ornegi ADIYLA DEGIL OLCUMLE
+           secildi — bes motor kaydi icinde bas/son sureksizligi 0.021
+           (digerleri 0.185-0.233), yani dikissiz donen tek kayit bu.
+           Seviye (0.6-1.0) playbackRate'e esleniyor: rate = base + span*level
+           -> 0.904 .. 1.040. Perdeyi degistirir, dongu dikisini bozmaz. */
+        hoverName: 'hover',
+        hoverGain: 0.20,       // kayit gercek oldugu icin prosedurel 0.08'den yuksek
+        hoverRateBase: 0.70,
+        hoverRateSpan: 0.34,
+
+        /* Olay -> ornek esleme. names: sirayla donulen varyantlar (ayni
+           dalga formunun saniyede bes kez tekrari yorucuydu).
+           gain  : olay kazanci        prio : oncelikli yuva payi
+           send  : mekan gonderisi     pan  : panorama genisligi (+-yarisi)
+           det   : sabit perde kaydirmasi (cent)
+           spread: +-perde sapmasi; 0 = tonlu isaretler akortta kalsin. */
+        voices: {
+            shot:      { names: ['shot_0', 'shot_1', 'shot_2', 'shot_3'], gain: 0.42, prio: true, send: 0.05, pan: 0.24, spread: 70 },
+            eshot:     { names: ['eshot_0', 'eshot_1'], gain: 0.34, send: 0.04, pan: 0.50, spread: 90 },
+            bshot:     { names: ['bshot_0'], gain: 0.55, prio: true, send: 0.12, spread: 60 },
+            hit:       { names: ['hit_0', 'hit_1', 'hit_2'], gain: 0.32, send: 0.05, pan: 0.40, spread: 110 },
+            // kara hedefi: ayni isabet ornekleri, bir tam ses altta (tok, alcak)
+            groundHit: { names: ['hit_0', 'hit_1', 'hit_2'], gain: 0.38, send: 0.07, pan: 0.30, det: -400, spread: 90 },
+            gdeath:    { names: ['gdeath'], gain: 0.60, prio: true, send: 0.28, pan: 0.24, spread: 70 },
+            flak:      { names: ['flak'], gain: 0.44, send: 0.14, pan: 0.60, spread: 120 },
+            boom:      { names: ['boom_0', 'boom_1'], gain: 0.56, prio: true, send: 0.22, pan: 0.30, spread: 100 },
+            warn:      { names: ['warn'], gain: 0.50, prio: true, send: 0.25, spread: 0 },
+            stage:     { names: ['stage'], gain: 0.50, prio: true, send: 0.20, spread: 0 },
+            victory:   { names: ['victory'], gain: 0.50, prio: true, send: 0.30, spread: 0 },
+        },
+    }, CONFIG.SOUND.sfx || {}),
 });
 
 Object.assign(CONFIG.MUSIC, {

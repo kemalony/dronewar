@@ -1,6 +1,6 @@
 # DRONE WAR — Durum
 
-## Tur: 24 (tamamlandı — web 68 PASS / 1 FAIL; tek FAIL vision_polish = ulaşılamayan LAN API)
+## Tur: 25 (tamamlandı — web 68 PASS / 1 FAIL; tek FAIL vision_polish = ulaşılamayan LAN API)
 
 ## Tamamlanan
 - **Motor:** Sabit adım sim (120Hz akümülatör), Clock, Input, Assets, Renderer, Pool, Player, Bullet, Enemy, Boss, Game
@@ -88,11 +88,32 @@
   şerit düzenine geçti (girdi modeli değişmedi), `pause` koşu özeti aldı.
   Ölçüm: yayılım menu 8→3, pause 24→5, stagecard 38→8.
 
+- **Round 25 — gerçek örnek sesler.** Sahibin "web'deki sesler çok basitti" geri
+  bildirimi üzerine prosedürel sentez örnek seslerle değiştirildi. Kaynak: Kenney
+  "Sci-Fi Sounds", **CC0** (kamu malı, ticari serbest, atıf zorunlu değil). 73 sesin
+  tamamı ölçülüp 18'i seçildi, 22 kHz mono'ya indirilip kırpıldı: 824 KB → 99 KB ham,
+  132 KB base64. `index.html` 275 → 479 KB. `playerShot` 4 varyant + deterministik
+  perde/kazanç jitter'ı (`_rotN`/`_varN`, sim LCG'sine DOKUNMAZ). Prosedürel kod
+  SİLİNMEDİ — banka hazır değilse ya da çözülemezse ona düşülüyor.
+  Kapı: `tools/gate_sfx.py` 7/7.
+
 ## Kalan / Sonraki Turlar
 - **Vision polish (Round 13+):** min_score=7 (hedef 8), blocking değişken (hedef 0).
 - **Cila (Round 13+):** Değerlendirici bulgularıyla ince ayar.
 
 ## Orkestratör Notları — Geri Alma
+- **`file://` altında dış ses dosyası WebAudio'ya bağlanamaz — TAINTED.** Ölçüldü:
+  `fetch` ve `XHR` bloklu; `new Audio('assets/...')` yükleniyor ve çalıyor AMA
+  `ctx.createMediaElementSource()` bağlanıyor ve **sessiz** geliyor. Canvas'taki
+  `toDataURL` tuzağının aynı sınıfı. O yol seçilirse kompresör/limiter zinciri, üst
+  üste binme ve perde kontrolü komple kaybedilir. Doğru yol **base64 + `atob` +
+  `decodeAudioData`**: hiç ağdan geçmiyor, ölçülen tepe 0.506, tam kontrol.
+  `src/audio/sfx.data.js` ÜRETİLEN dosyadır — `tools/build_sfx.py` ile
+  `assets/sfx/*.ogg` içinden üretilir, elle düzenlenmez.
+- **Döngülenen ses ada göre değil ÖLÇEREK seçilir.** Beş saniyelik motor
+  kayıtlarının baş/son süreksizliği: `spaceEngine` 0.233, `spaceEngineLow` 0.185,
+  `engineCircular` **0.021**. Yalnız sonuncusu dikişsiz döner. İsimlere bakılsaydı
+  yanlışı seçilirdi.
 - **Hata ayıklama bayrağı uygulamayı kalıcı sağır bıraktı.** Android `:game`'de
   `--ei autoplay` ile açılan `autoplay` bayrağı hiç kapanmıyordu ve dokun-başlat dalı
   `!autoplay` ile korunduğu için uygulama oyun sonu ekranında **her dokunuşu yok

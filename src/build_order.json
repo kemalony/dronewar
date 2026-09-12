@@ -11,6 +11,7 @@
   "core/Assets.js",
   "core/Renderer.js",
   "input/Input.js",
+  "audio/sfx.data.js",
   "audio/Music.js",
   "audio/Sound.js",
   "fx/Explosion.js",
