@@ -20,6 +20,8 @@ Varsayilan kuru kosum: neyin degisecegini yazar, dosyaya dokunmaz.
 """
 import argparse
 import json
+import re
+import subprocess
 import pathlib
 import sys
 
@@ -27,7 +29,17 @@ from PIL import Image, ImageFilter
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
-ZOOM = 1.10
+
+def config_value(path, default=None):
+    """CONFIG.js'ten tek bir sayiyi okur. Tek kaynak: src/core/CONFIG.js.
+    Araclarin kendi kopyasini tutmasi, tam da bu projede bedeli odenmis hata."""
+    src = (ROOT / "src" / "core" / "CONFIG.js").read_text()
+    key = path.split(".")[-1]
+    m = re.search(rf"\b{key}\s*:\s*([0-9.]+)", src)
+    return float(m.group(1)) if m else default
+
+
+ZOOM = config_value("PARALLAX.tileZoom", 1.10)
 BAND = 200          # duzeltmenin yayildigi satir sayisi
 SMOOTH = 41         # sutun bazli farki yatayda yumusatma yaricapi
 
@@ -94,6 +106,12 @@ def blend_pair(a_path, b_path, apply_changes):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="dosyalari gercekten yaz")
+    ap.add_argument("--from-ref", metavar="REF",
+                    help="once karolari bu git ref'inden geri al. Ton duzeltmesi "
+                         "BIRIKIMLIDIR; zaten harmanlanmis bir karoyu tekrar "
+                         "harmanlamak farki iki kez uygular. tileZoom degisince "
+                         "dikis satiri kaydigi icin yeniden harmanlamak sart, ve o "
+                         "zaman temiz tabandan baslamak da sart.")
     ap.add_argument("cities", nargs="*")
     args = ap.parse_args()
 
@@ -103,6 +121,16 @@ def main():
         n[len("city_"):] for n in names
         if n.startswith("city_") and not n.endswith("_b") and f"{n}_b" in names
     )
+
+    if args.from_ref:
+        for c in cities:
+            for f in (f"assets/city_{c}.png", f"assets/city_{c}_b.png"):
+                blob = subprocess.run(["git", "show", f"{args.from_ref}:{f}"],
+                                      cwd=ROOT, capture_output=True)
+                if blob.returncode == 0:
+                    (ROOT / f).write_bytes(blob.stdout)
+                    print(f"  geri alindi: {f} @ {args.from_ref}")
+        print()
 
     mode = "UYGULANIYOR" if args.apply else "kuru kosum (--apply ile yaz)"
     print(f"tileZoom={ZOOM}  gorunur dikis satiri=H/{ZOOM:.2f}  band={BAND}  [{mode}]\n")

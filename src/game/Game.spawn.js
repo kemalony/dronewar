@@ -403,6 +403,11 @@ Object.assign(Game.prototype, {
       const j = this.jammerPool.acquire();
       if (!j) return null;
       j.reset(x, y);
+      /* Round 22: jammer artik vurulabiliyor. Can Jammer sinifinda YOK (units);
+         reset() onu temizlemedigi icin BURADA verilmeli — havuzdan yeniden
+         alinan bir jammer aksi halde olu canla (0) doğar ve tek mermiyle
+         duserdi. Units'e hp/hit() gelince bu satir oraya tasinir.           */
+      if (typeof j.hit !== 'function') j.hp = CONFIG.JAMMER.hp;
       return j;
     }
     const pools = { scout: this.scoutPool, gunner: this.gunnerPool, shield: this.shieldPool,
@@ -415,6 +420,29 @@ Object.assign(Game.prototype, {
     const st = CONFIG.STAGES[this.stageIdx];
     e.speed *= st.enemySpeedMul;
     return e;
+  },
+  /* Round 22: jammer test kancasi (autotest). Verilen konumda bir jammer dogurur.
+     DIKKAT — olcum kosulu: Jammer.update kendi y'sini CONFIG.JAMMER.hoverY'ye
+     (240) civiler, yani verilen y giris inisinden sonra gecersizdir (units
+     paketi). Oyuncu H*0.78 = 624'te baslar; 200 px'lik jamming menzili bu iki
+     nokta arasinda ASLA kapanmaz, dolayisiyla girdi verilmeyen bir kosumda
+     inRange hic true olmaz ve ambient glitch olculemezdi. Kanca bu yuzden
+     oyuncuyu menzil icine ceker — gercek oyunda oyuncunun yukari ucarak
+     yaptigi seyin aynisi (y ~ 350 ekran icinde ve serbestce erisilebilir).
+     inRange'i yine Jammer.update hesaplar; hicbir bayrak elle kurulmaz.     */
+  spawnJammer(x, y) {
+    const J = CONFIG.JAMMER;
+    const j = this._spawnEnemy('jammer', x != null ? x : CONFIG.W / 2,
+                                         y != null ? y : -40);
+    if (!j) return null;
+    const near = J.radius * 0.7;
+    const dx = this.player.x - CONFIG.W / 2, dy = this.player.y - J.hoverY;
+    if (dx * dx + dy * dy > near * near) {
+      this.player.x = CONFIG.W / 2;                 // salinim merkezi
+      this.player.y = J.hoverY + J.radius * 0.55;   // 240 + 110 = 350
+      this.player.vx = 0; this.player.vy = 0;
+    }
+    return j;
   },
   _enemiesState() {
     const out = [];

@@ -112,6 +112,17 @@ class Game {
     this._killingEnemyType = '';      // game over: olduren dusman tipi
     // Menu yumusak gecis (round 9)
     this.menuFadeT = 1;               // 1 = tam gorunur, 0 = gecis ortasinda
+    /* Round 22: yazili ama hic cagrilmamis ozelliklerin oyun tarafi durumu.
+       _wreckSeed: enkaz tohumu icin ADLI LCG akisi — her olumde yeni bir LCG
+       kurulmaz, tek akis ilerler (determinizm: iki kare hizinda ayni enkaz).
+       _hoverOn/_hoverLevel: surekli rotor uguldusunun oyun tarafi niyeti;
+       gercek bayrak sound.hoverOn, bu ikisi yalniz gecis tespiti icin.
+       _jammersKilled: VURULARAK dusurulen jammer sayisi (ekrandan cikan degil). */
+    this._wreckSeed = 9;
+    this._hoverOn = false;
+    this._hoverLevel = 0;
+    this._hoverT = 0;                 // seviye tazeleme sayaci (s)
+    this._jammersKilled = 0;
     this._expose();
   }
   _expose() {
@@ -213,15 +224,62 @@ class Game {
         cloudOffset: this.clouds.layerOffset(),
         cloudSprites: this.clouds.spawnedSprites(12),
         bossSprite: this.boss ? this.boss.sprite : '',
-        /* Round 15: jammer — sahnede aktif mi + oyuncu menzilde mi */
+        /* Round 15: jammer — sahnede aktif mi + oyuncu menzilde mi.
+           Round 22: `killed` EKLENDI (mevcut alanlar korundu): jammer artik
+           vurulabiliyor; kapi "aktif/menzilde" yerine gercekten dusuruleni
+           olcer — yoksa dokunulmaz bir dron da yesil yanardi. */
         jammer: (function() {
-          let active = false, inRange = false;
+          let active = false, inRange = false, count = 0;
           this.jammerPool.forEach((j) => {
             if (!j.active) return;
-            active = true;
+            active = true; count++;
             if (j.inRange) inRange = true;
           });
-          return { active, inRange };
+          return { active, inRange, count, killed: this._jammersKilled };
+        }).call(this),
+        /* Round 22: dusen enkaz (FxSystem.spawnWreck) — olculebilir olmali.
+           Okuyucular fx paketinindir; yoksa havuzdan DUSURULMEDEN hesaplanir
+           (eksik okuyucu sessizce "her sey yolunda" dememeli). */
+        fx: (function() {
+          const f = this.fx;
+          const pool = f.wrecks;
+          const wrecks = typeof f.wreckCount === 'function'
+            ? f.wreckCount() : (pool ? pool.count() : 0);
+          let finite;
+          if (typeof f.wreckFinite === 'function') finite = f.wreckFinite();
+          else if (pool) {
+            finite = true;
+            pool.forEach((w) => {
+              if (!(isFinite(w.x) && isFinite(w.y) && isFinite(w.ang))) finite = false;
+            });
+          } else finite = false;
+          let sample = null;
+          if (typeof f.wreckSample === 'function') sample = f.wreckSample();
+          else if (pool) {
+            for (const w of pool.items) {
+              if (w.active) { sample = { x: w.x, y: w.y, ang: w.ang }; break; }
+            }
+          }
+          return { wrecks, wreckFinite: finite, wreckSample: sample };
+        }).call(this),
+        /* Round 22: glitch — ambient (jammer menzili) + anlik hasar glitch'i. */
+        glitch: (function() {
+          const f = this.fx;
+          return {
+            level: typeof f.ambientGlitchLevel === 'function'
+              ? f.ambientGlitchLevel() : (f._ambientGlitch || 0),
+            damageT: typeof f.damageGlitchT === 'function'
+              ? f.damageGlitchT() : Math.max(0, f._glitchT || 0),
+          };
+        }).call(this),
+        /* Round 22: surekli rotor uguldusu. Autotest'te AudioContext ASKIDA
+           kalir ve hicbir ses dugumu kurulmaz — bayrak yine de acilmali,
+           bu yuzden mantiksal bayrak okunur (sound.hoverOn), ses grafigi degil. */
+        sound: (function() {
+          const s = this.sound;
+          const on = (typeof s.hoverOn === 'boolean') ? s.hoverOn
+            : (typeof s.hoverActive === 'function' ? !!s.hoverActive() : this._hoverOn);
+          return { hover: !!on, hoverLevel: this._hoverLevel, muted: s.muted };
         }).call(this),
         /* Round 15: tasici boss — parca canlari + govde kilit durumu.
            Antenden once bodyVulnerable=false (govde hasar almaz). */
@@ -304,6 +362,12 @@ class Game {
       killCarrier: () => this.killCarrier(),
       /* Round 15: tasici boss'u bolumden bagimsiz baslat (autotest kancasi). */
       spawnCarrier: () => this.spawnCarrier(),
+      /* Round 22: olu kod kancalari — hepsi NORMAL yollardan gecer (ayri bir
+         "test yolu" yok; yoksa kapi gercekte calismayan bir seyi olcerdi). */
+      killNearestEnemy: () => this.killNearestEnemy(),
+      damagePlayer: () => this.damagePlayer(),
+      spawnJammer: (x, y) => this.spawnJammer(x, y),
+      killNearestJammer: () => this.killNearestJammer(),
       /* Round 16: kara hedefi test kancalari */
       spawnGround: (type, x, screenY) => this.spawnGround(type, x, screenY),
       /* Round 17: skimmer test kancasi — liman disinda false doner. */
@@ -487,6 +551,44 @@ class Game {
     /* Round 19: müzik yogunlugunu duruma bagla (audio paketi motoru yazar).
        Zamanlama sim'den BAGIMSIZ: buradan sadece hedef yogunluk verilir. */
     this._syncMusic();
+    /* Round 22: surekli rotor uguldusu — oyun basladiginda acilir, duraklama /
+       oyun sonu / menude kapanir. Durum kontrolu BURADA (play blogunun disinda)
+       yapilir ki her cikis yolu tek yerden kapatilsin. */
+    this._updateHover(dt);
+  }
+  /* Surekli motor sesi (Sound.hover / stopHover). Ses dugumleri yalnizca
+     GECISTE kurulur/yikilir; seviye tazelemesi kademe (hoverStep) ve zaman
+     araligiyla kisilir — kare basina cagri YOK (audio paketinin notu).
+     Seviye oyuncunun hizindan turetilir: durur gibi sukunetli, hizlanirken
+     perde/genlik yukselir. Sim adiminda hesaplanir, performance.now() YOK.   */
+  _updateHover(dt) {
+    const F = CONFIG.FEEDBACK;
+    if (this.state !== 'play') {
+      if (this._hoverOn) {
+        if (typeof this.sound.stopHover === 'function') this.sound.stopHover();
+        this._hoverOn = false;
+        this._hoverLevel = 0;
+        this._hoverT = 0;
+      }
+      return;
+    }
+    const p = this.player;
+    const maxV = p.maxSpeed || CONFIG.PLAYER.maxSpeed;
+    const sp = Math.min(1, Math.sqrt(p.vx * p.vx + p.vy * p.vy) / (maxV || 1));
+    /* Seviye araligi: audio paketi kendi araligini yayinlarsa O gecerlidir
+       (tek kaynak); yoksa game.config'teki yedek kullanilir. */
+    const H = (CONFIG.SOUND && CONFIG.SOUND.hover) || null;
+    const lo = (H && H.levelMin != null) ? H.levelMin : F.hoverMin;
+    const hi = (H && H.levelMax != null) ? H.levelMax : F.hoverMax;
+    const lv = lo + (hi - lo) * sp;
+    this._hoverT += dt;
+    const fresh = !this._hoverOn;
+    if (fresh || (this._hoverT >= 0.2 && Math.abs(lv - this._hoverLevel) >= F.hoverStep)) {
+      if (typeof this.sound.hover === 'function') this.sound.hover(lv);
+      this._hoverOn = true;
+      this._hoverLevel = lv;
+      this._hoverT = 0;
+    }
   }
   /* Hedef yogunlugu: boss uyarisi/aktifken boss, oyun play, menu/duraklama/
      gameover/victory menu seviyesi. Duraklamada muzik DURMAZ — menu seviyesine iner. */
@@ -674,6 +776,13 @@ class Game {
     this.clouds.reset();
     this._spawnSeed = 42;
     this._spawnTimer = 0;
+    /* Round 22: enkaz tohumu + jammer sayaci sifirlari (deterministik kosu:
+       ayni girdi ayni enkaz savrulmasini vermeli). Hover bayragi kapali
+       baslar; _updateHover ilk sim adiminda yeniden acar. */
+    this._wreckSeed = 9;
+    this._jammersKilled = 0;
+    if (this._hoverOn && typeof this.sound.stopHover === 'function') this.sound.stopHover();
+    this._hoverOn = false; this._hoverLevel = 0; this._hoverT = 0;
     // bölüm ilerlemesi (round 7)
     this.stageIdx = 0;
     this.killsThisStage = 0;

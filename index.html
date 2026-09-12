@@ -64,7 +64,16 @@ const CONFIG = {
   SCROLL: { speed: 120 },         // zemin dikey kayma px/s
   PARALLAX: {
     cityShift: 30,                // oyuncu x (-1..1) -> karo yatay kayma (px)
-    tileZoom: 1.10,               // karo ekrandan buyuk cizilir ki kayarken kenar acilmasin
+    /* Karo ekrandan buyuk cizilir ki kayarken kenar acilmasin. Pay her iki yanda
+       (W*tileZoom - W)/2. 1.10'da bu 24 px'ti ve maksimum kayma da tam 24 px --
+       artan pay SIFIRDI, yani sag kenara dayanip sarsinti almak karonun kenarini
+       ekrana sokuyor ve altindan SIYAH gorunuyordu (olculdu 2026-09-12).
+       1.18 -> pay 43.2 px; kayma 24 + en buyuk sarsinti 14 = 38, artan +5.2 px.
+       DIKKAT: bunu degistirmek gorunur dikis satirini (H/tileZoom) kaydirir --
+       karolarin ton harmanlamasi o satirda yapilir, tools/blend_tiles.py ile
+       TEMIZ TABANDAN yeniden calistirilmali. tools/tile_seam_check.py ikisini de
+       olcer. */
+    tileZoom: 1.18,
     buildingShift: 38,            // oyuncu x (-1..1) -> bina katmani kayma (px)
     leanMaxDeg: 2,                // hizli yana giderken sahne egimi (derece, yalniz cizim)
     smooth: 8,                    // soneum hizi (1/s) — kritik sonumlu yaklasim
@@ -333,6 +342,59 @@ const CONFIG = {
    ayni turda ekledigi MUSIC.intensity/bpm anahtarlari EZILIR ve oyun ilk sim
    adiminda coker (olculdu: TypeError, `intensity.play` undefined). Paylasilan
    anahtar EZILMEZ, GENISLETILIR. */
+/* Round 22: fircasiz motor ugultusu (Sound.hover). CONFIG.SOUND core'undur;
+   EZMEDEN genisletiyoruz — `Object.assign(CONFIG.SOUND, {...})` maxConcurrent
+   ve masterGain'i korur. Ic `hover` nesnesi de varsa uzerine yazilmaz. */
+/* Round 23: mix zinciri (limiter + efekt veri yolu + mekan gonderisi) ve
+   muzik katman tonlari. Ayni kural: ic nesneler `Object.assign(defaults,
+   mevcut)` ile birlestirilir, mevcut degerler kazanir. */
+Object.assign(CONFIG.SOUND, {
+    hover: Object.assign({
+        baseFreq: 85,          // Hz — level=1.0'daki temel frekans
+        levelMin: 0.6,         // level kirpma araligi (hiza gore perde/genlik)
+        levelMax: 1.0,
+        gain: 0.08,            // surekli vizilti seviyesi (atis sesinin onune gecmez)
+        amHz: 28,              // rotor donme hissi: genlik modulasyonu frekansi
+        amDepth: 0.02,         // modulasyon derinligi (level ile olceklenir)
+        attack: 0.15,          // fade-in zaman sabiti (s)
+        glide: 0.05,           // perde degisim zaman sabiti (s)
+        gainGlide: 0.08,       // genlik degisim zaman sabiti (s)
+        release: 0.10,         // fade-out zaman sabiti (s)
+        stopMs: 400,           // fade-out sonrasi dugum yikimi (ms)
+        harmonics: [
+            { mult: 1,   vol: 0.50 },   // temel (sawtooth)
+            { mult: 2,   vol: 0.30 },   // 2. harmonik
+            { mult: 3,   vol: 0.18 },   // 3. harmonik
+            { mult: 4.9, vol: 0.07 },   // yukselton (fritter)
+        ],
+    }, CONFIG.SOUND.hover || {}),
+
+    /* ---------------------------------------------------------------- mix
+       Dinamik yonetimi. Onceden hicbir tavan yoktu: 8 ses ust uste bininca
+       toplam genlik 1.0'i asiyor ve dijital kirpilma duyuluyordu.
+       Zincir:  efektler -> fxBus (yumusak sikistirici) -> master -> limiter
+                hover / muzik        ------------------> master -> limiter
+       hover ve muzik fxBus'a GIRMEZ; girseydi her atista motor ugultusu ve
+       muzik "pompalanir" (ducking) duyulurdu. */
+    mix: Object.assign({
+        noiseSec: 2,           // gurultu tamponu (s) — ofset cesitliligi icin
+        // master cikis emniyeti: normalde devreye girmez, yalniz tepe keser
+        limitThreshold: -3, limitKnee: 6, limitRatio: 8,
+        limitAttack: 0.003, limitRelease: 0.18,
+        // efekt veri yolu: yogun catismada toplu seviyeyi toparlar
+        fxThreshold: -12, fxKnee: 10, fxRatio: 3.5,
+        fxAttack: 0.002, fxRelease: 0.14,
+        // mekan: kisa geri beslemeli gecikme (konvolusyon yok — mobilde ucuz)
+        spaceDelay: 0.085,     // s — tek yansima araligi
+        spaceFeedback: 0.30,   // geri besleme (0 = tek yanki)
+        spaceTone: 2400,       // Hz — yankinin alcak gecirgen tonu
+        spaceGain: 0.45,       // gonderi donusu (0 = mekan kapali)
+        priorityReserve: 4,    // oncelikli seslere (oyuncu silahi, olum, boss)
+                               // maxConcurrent USTUNE ek yuva. 0 = eski davranis:
+                               // 8 yuva dolunca oyuncunun atis sesi de duserdi.
+    }, CONFIG.SOUND.mix || {}),
+});
+
 Object.assign(CONFIG.MUSIC, {
     gain: 0.28,            // toplam muzik kazanci (efektlerin onune gecmez)
     layerGainMul: 1.0,     // katman genligi carpani
@@ -343,10 +405,32 @@ Object.assign(CONFIG.MUSIC, {
     tickMs: 80,            // setInterval araligi (< lookahead)
     rampMs: 400,           // katman acma/kapama yumusak gecisi
     thresholds: [0.25, 0.55, 0.55, 1.0],  // bass,pulse,arp,lead acilis yogunlugu
-    bassWave: 'triangle', bassDur: 0.22, bassVol: 0.5,
-    pulseWave: 'sine',    pulseHz: 180, pulseDur: 0.05, pulseVol: 0.4,
-    arpWave: 'square',    arpDur: 0.16,  arpVol: 0.22,
-    leadWave: 'sine',     leadDur: 0.55, leadVol: 0.28,
+    bassWave: 'sawtooth', bassDur: 0.22, bassVol: 0.42, bassAtk: 0.012,
+    pulseWave: 'sine',    pulseHz: 180, pulseDur: 0.05, pulseVol: 0.34,
+    arpWave: 'square',    arpDur: 0.16,  arpVol: 0.20,
+    leadWave: 'triangle', leadDur: 0.55, leadVol: 0.26, leadAtk: 0.05,
+
+    /* Round 23 — katman tonlari. Dort katman da ham osilatorken hepsi ayni
+       bantta ust uste biniyor, toplam bulaniyordu. Her katmana kendi bandi:
+       bass alcak gecirgen (saw'in tizi kesilir, agirlik kalir), arp yuksek
+       gecirgen (kare dalga bas bolgesini terk eder), lead yumusatilir. */
+    layerTone: [
+        { type: 'lowpass',  hz: 280,  q: 0.9 },   // 0 bass
+        null,                                      // 1 pulse (kendi icinde sekilli)
+        { type: 'highpass', hz: 190,  q: 0.7 },   // 2 arp
+        { type: 'lowpass',  hz: 2800, q: 0.7 },   // 3 lead
+    ],
+    /* Hover ugultusu icin bass katmaninda kucuk cukur. Bass notalari
+       55/65/82/98 Hz; hover temeli 51-85 Hz — 82 ile 85 ust uste gelince
+       saniyede ~3 vurus (beating) duyuluyordu. ZEVK MESELESI: 0 yazilirsa
+       cukur kapanir ve eski (dolu ama bulanik) bas geri gelir. */
+    hoverDuckHz: 85, hoverDuckQ: 1.1, hoverDuckDb: -5,
+    /* Lead: hafif detune'lu ikiz (koro/supersaw kalinligi). voices=1 kapatir. */
+    leadVoices: 2, leadSpread: 9,      // cent
+    /* Perkusif tik: sinus govde + yuksek gecirgen gurultu ucu. Muzikteki tek
+       gurultu kaynagi; osilator corbasindan ayrilmasi icin. 0 = kapali. */
+    pulseDropHz: 90,       // govde perdesi bu degere duser (tok tik)
+    pulseNoiseVol: 0.16, pulseNoiseHz: 3600, pulseNoiseDur: 0.03,
 });
 
 /* ---- src/units/units.config.js ---- */
@@ -471,6 +555,27 @@ Object.assign(CONFIG.CARRIER, {
   deathWindowMs: 600,     // ...bu sure icinde esit araliklarla
   flashMs: 350,           // kisa ekran parlamasi
 });
+/* Round 22: yazilmis ama HIC CAGRILMAMIS ozelliklerin cagri noktasi sabitleri.
+   YENI ust duzey anahtar (FEEDBACK) — baska paketin anahtarina yazmadigimiz
+   icin kardes silme riski yok; yine de `|| {}` ile genisleterek yaziyoruz,
+   boylece ileride baska bir dosya ayni anahtara eklerse ikisi de yasar. */
+CONFIG.FEEDBACK = Object.assign(CONFIG.FEEDBACK || {}, {
+  /* Oyuncu hasar alinca sinyal bozulmasi (FxSystem.glitch). Sarsinti
+     (SHAKE.playerHitMs = 260 ms) ile ayni olayda tetiklenir; glitch biraz
+     daha uzun surer ki "sinyal toparlaniyor" hissi sarsintiyi izlesin. */
+  damageGlitchMs: 420,
+  damageGlitchAmp: 0.85,     // 0..1 — ambient (0.5) uzerinde kalmali
+  /* Surekli rotor uguldusu (Sound.hover). Seviye oyuncunun hizindan turetilir;
+     Sound kendi icinde 0.6..1.0 arasina kelepceler, ayni araligi burada da
+     tutuyoruz ki HUD/state ile ses ayni sayiyi gorsun. */
+  hoverMin: 0.6,
+  hoverMax: 1.0,
+  hoverStep: 0.05,           // bu kadar degismeden ses dugumlerine dokunma
+  /* Jammer govde yaricapi (carpisma). Jammer sinifinin (units) kendi `radius`
+     alani YOK — CONFIG.JAMMER.radius jamming MENZILI (200 px), hitbox degil.
+     Units'e hp/hit() eklenince bu deger oraya tasinmali (reports/requests). */
+  jammerHitR: 28,            // ~ CONFIG.JAMMER.size (80) * 0.35
+});
 
 /* ---- src/fx/fx.config.js ---- */
 /* fx paketinin kendi sabitleri — CONFIG'i genisletir.
@@ -487,6 +592,18 @@ CONFIG.FX.wreck = {
   gravity: 380,        // px/s^2
   spinMax: 3,          // rad/s (isaret ve buyukluk LCG'den)
   driftMax: 90,        // px/s yatay savrulma
+  /* Round 22 — EKSIK UC ANAHTAR. FallingWreck bunlari okuyordu ama tanimli
+     degillerdi: `vy = undefined` -> `vy += gravity*dt` -> NaN, yani enkaz ilk
+     karede imkansiz bir koordinata ucuyordu; `while (acc >= undefined)` hep
+     false oldugu icin duman izi hic dogmuyordu. Ozellik bu yuzden yazili ama
+     hic calismamis durumdaydi.                                              */
+  startVy: 60,         // px/s baslangic asagi itki. Yercekimi tek basina
+                       // 1200 ms'de 0.5*380*1.2^2 = 274 px dusurur; 60'lik
+                       // itki ile ~346 px — 800 px'lik ekranda enkaz omru
+                       // dolmadan alt kenardan cikmaz, "suzuluyor" okunur.
+  smokeEvery: 0.09,    // s — duman parcacigi araligi (~13 parcacik / enkaz)
+  smokeLife: 0.7,      // s — parcacik omru; 0.09 ile ayni anda ~8 canli
+                       // parcacik, yani incelen kisa bir kuyruk (havuz 48).
 };
 /* Glitch tavani: anlik hasar glitch'i + ambient seviye toplanirken asilamasi
    gereken maksimum genlik. Hasar glitch'i tek basina tam genligini (1) korur;
@@ -1149,7 +1266,20 @@ class Input {
    Katmanli, prosedurel muzik motoru (round 19). Dosya yok; her sey WebAudio.
    Simule ASLA dokunmaz: zamanlama AudioContext.currentTime + setInterval
    ile ileri planlama. Autotest'te ctx askida kalir -> tum cagrilar sessizce
-   no-op ve hicbir kosulda exception atmaz (audio_no_throw kapisina girer). */
+   no-op ve hicbir kosulda exception atmaz (audio_no_throw kapisina girer).
+
+   Round 23 — ses kalitesi:
+   - Her katmanin KENDI tonu var (bass alcak gecirgen, arp yuksek gecirgen,
+     lead yumusatilmis). Onceden dort katman da ham osilatordu ve hepsi ayni
+     bantta ust uste biniyordu; toplam "bulanik" duyuluyordu.
+   - Bass katmaninda, surekli hover ugultusunun temel frekansinda kucuk bir
+     cukur var (CONFIG.MUSIC.hoverDuck*). Bass notalari 55/65/82/98 Hz; hover
+     temeli 51-85 Hz. 82 Hz ile 85 Hz ust uste gelince saniyede ~3 kez vuran
+     bir dalgalanma (beating) olusuyordu. Cukuru kapatmak icin hoverDuckDb=0.
+   - Perkusif tik artik gurultu tabanli (Sound'un tamponu); tek basina sinus
+     tik, muzigin geri kalaniyla ayni tinida kaliyordu.
+   DETERMINIZM: Math.random() YOK. Gurultu tamponuna giris noktasi kendi
+   sayacindan (_tickN) turetilir; sim bu sayaci ne okur ne yazar.            */
 class Music {
   constructor() {
     this._sound = null;        // Sound referansi (ctx/master/muted)
@@ -1158,9 +1288,11 @@ class Music {
     this._timer = null;        // setInterval id (nota kuyrugu)
     this._nextTime = 0;        // bir sonraki planlanacak an (ctx saati)
     this._step = 0;            // sekil icinde sayac
+    this._tickN = 0;           // perkusyon varyasyon sayaci (deterministik)
     this._layers = [           // katman gain node'lari (sira: bass,pulse,arp,lead)
       null, null, null, null
     ];
+    this._chains = [null, null, null, null];  // katman tonu (filtre) zincirleri
   }
   /* Sound tarafindan baglanir; sim'e dokunmaz. */
   attach(sound) { this._sound = sound; }
@@ -1228,17 +1360,42 @@ class Music {
     const th = (this._cfg().thresholds) || [0.25, 0.55, 0.55, 1.0];
     return th[i] != null ? th[i] : [0.25, 0.55, 0.55, 1.0][i];
   }
-  /* Bir katmanin gain node'u; yoksa olusturup master'a bagla. */
+  /* Bir katmanin gain node'u; yoksa olusturup ton zinciriyle master'a bagla.
+     Notalar HEP gain node'una baglanir (katman sesi buradan rampalanir);
+     filtreler gain'den SONRA gelir, yani rampa davranisi degismez. */
   _layerGain(i) {
     let g = this._layers[i];
     if (g) return g;
     const s = this._sound;
     if (!s || !s.ctx || !s.master) return null;
-    g = s.ctx.createGain();
-    g.gain.value = 0;
-    g.connect(s.master);
-    this._layers[i] = g;
-    return g;
+    try {
+      const M = this._cfg();
+      g = s.ctx.createGain();
+      g.gain.value = 0;
+      let tail = g;
+      const chain = [];
+      const tone = (M.layerTone || [])[i];
+      if (tone && tone.type) {
+        const f = s.ctx.createBiquadFilter();
+        f.type = tone.type;
+        f.frequency.value = tone.hz || 1000;
+        if (tone.q != null) f.Q.value = tone.q;
+        tail.connect(f); tail = f; chain.push(f);
+      }
+      // Bass katmani: hover ugultusunun temel frekansinda kucuk cukur.
+      if (i === 0 && M.hoverDuckDb) {
+        const p = s.ctx.createBiquadFilter();
+        p.type = 'peaking';
+        p.frequency.value = M.hoverDuckHz || 85;
+        p.Q.value = M.hoverDuckQ || 1.0;
+        p.gain.value = M.hoverDuckDb;      // negatif = cukur
+        tail.connect(p); tail = p; chain.push(p);
+      }
+      tail.connect(s.master);
+      this._layers[i] = g;
+      this._chains[i] = chain;
+      return g;
+    } catch (e) { return null; }
   }
   /* Yumusak gecis: ani acma/kapama yok. */
   _ramp(g, target, ramp) {
@@ -1287,7 +1444,7 @@ class Music {
     }
     // pulse: perkusif tik — ciftlerde (her 2 adim).
     if (i >= this._threshold(1) && (step % 2) === 0) {
-      this._pulse(t, M);
+      this._pulse(t, M, step);
     }
     // arp: arpej — her adimda yukselen perde.
     if (i >= this._threshold(2)) {
@@ -1300,29 +1457,52 @@ class Music {
       this._lead(f(deg + 24), t, M);
     }
   }
-  /* Kisa osilatör: hedef gain node'a, t aninda, env ile. */
-  _osc(type, freq, t, dur, vol, layerIdx) {
+  /* Kisa osilatör: hedef gain node'a, t aninda, env ile.
+     opt.voices>1 ise hafif detune'lu ikizler eklenir (kalinlik); toplam genlik
+     ses sayisina bolunur, yani katman seviyesi degismez.
+     Kuyrukta 0.0001'de kesmek yerine sifira dogrusal iniyoruz — bitis tiki yok. */
+  _osc(type, freq, t, dur, vol, layerIdx, opt) {
     const s = this._sound;
     if (!s || !s.ctx) return;
     const g = this._layerGain(layerIdx);
     if (!g) return;
+    const o = opt || {};
+    const n = Math.max(1, o.voices || 1);
+    const spread = o.spread || 0;
     try {
-      const osc = s.ctx.createOscillator();
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, t);
-      const env = s.ctx.createGain();
-      env.gain.setValueAtTime(0.0001, t);
-      env.gain.linearRampToValueAtTime(vol, t + 0.008);
-      env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      osc.connect(env); env.connect(g);
-      osc.start(t); osc.stop(t + dur + 0.02);
+      for (let k = 0; k < n; k++) {
+        const det = n > 1 ? (k - (n - 1) / 2) * spread : 0;
+        const osc = s.ctx.createOscillator();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, t);
+        if (det) { try { osc.detune.setValueAtTime(det, t); } catch (e) {} }
+        const env = s.ctx.createGain();
+        const a = o.atk || 0.008;
+        env.gain.setValueAtTime(0.0001, t);
+        env.gain.linearRampToValueAtTime(vol / n, t + a);
+        env.gain.exponentialRampToValueAtTime(0.0002, t + dur);
+        env.gain.linearRampToValueAtTime(0, t + dur + 0.006);
+        osc.connect(env); env.connect(g);
+        osc.start(t); osc.stop(t + dur + 0.02);
+      }
     } catch (e) {}
   }
-  _bass(freq, t, M) { this._osc(M.bassWave || 'triangle', freq, t, (M.bassDur || 0.22), (M.bassVol || 0.5), 0); }
-  _arp(freq, t, M)   { this._osc(M.arpWave || 'square',   freq, t, (M.arpDur || 0.16),  (M.arpVol || 0.22), 2); }
-  _lead(freq, t, M)   { this._osc(M.leadWave || 'sine',    freq, t, (M.leadDur || 0.55), (M.leadVol || 0.28), 3); }
-  /* Perkusif tik: buyuk genlikli, cok kisa (noise yerine keskin sine darbesi). */
-  _pulse(t, M) {
+  _bass(freq, t, M) {
+    this._osc(M.bassWave || 'triangle', freq, t, (M.bassDur || 0.22), (M.bassVol || 0.5), 0,
+              { atk: M.bassAtk || 0.012 });
+  }
+  _arp(freq, t, M) {
+    this._osc(M.arpWave || 'square', freq, t, (M.arpDur || 0.16), (M.arpVol || 0.22), 2,
+              { atk: 0.006 });
+  }
+  _lead(freq, t, M) {
+    this._osc(M.leadWave || 'sine', freq, t, (M.leadDur || 0.55), (M.leadVol || 0.28), 3,
+              { atk: M.leadAtk || 0.05, voices: M.leadVoices || 1, spread: M.leadSpread || 0 });
+  }
+  /* Perkusif tik: kisa sinus govdesi + yuksek gecirgen gurultu ucu.
+     Gurultu, Sound'un onceden uretilmis deterministik tamponundan gelir;
+     giris noktasi _tickN sayacindan turetilir (Math.random YOK, sim'e dokunmaz). */
+  _pulse(t, M, step) {
     const s = this._sound;
     if (!s || !s.ctx) return;
     const g = this._layerGain(1);
@@ -1331,27 +1511,70 @@ class Music {
       const osc = s.ctx.createOscillator();
       osc.type = M.pulseWave || 'sine';
       osc.frequency.setValueAtTime(M.pulseHz || 180, t);
+      if (M.pulseDropHz) osc.frequency.exponentialRampToValueAtTime(M.pulseDropHz, t + (M.pulseDur || 0.05));
       const env = s.ctx.createGain();
+      const dur = M.pulseDur || 0.05;
       env.gain.setValueAtTime(0.0001, t);
       env.gain.linearRampToValueAtTime(M.pulseVol || 0.4, t + 0.004);
-      env.gain.exponentialRampToValueAtTime(0.0001, t + (M.pulseDur || 0.05));
+      env.gain.exponentialRampToValueAtTime(0.0002, t + dur);
+      env.gain.linearRampToValueAtTime(0, t + dur + 0.005);
       osc.connect(env); env.connect(g);
-      osc.start(t); osc.stop(t + (M.pulseDur || 0.05) + 0.02);
+      osc.start(t); osc.stop(t + dur + 0.02);
+    } catch (e) {}
+    // Gurultu ucu — muzigin tek gurultu kaynagi; tiniyi osilator corbasindan ayirir.
+    const nv = M.pulseNoiseVol;
+    if (!nv || !s._noiseBuf) return;
+    try {
+      this._tickN = (this._tickN + 1) & 0xffff;
+      const off = ((this._tickN * 2654435761) >>> 16 & 0xffff) / 0x10000;
+      const ndur = M.pulseNoiseDur || 0.03;
+      const src = s.ctx.createBufferSource();
+      src.buffer = s._noiseBuf;
+      src.loop = true;
+      const hp = s.ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = M.pulseNoiseHz || 3200;
+      const env2 = s.ctx.createGain();
+      env2.gain.setValueAtTime(0.0001, t);
+      env2.gain.linearRampToValueAtTime(nv, t + 0.002);
+      env2.gain.exponentialRampToValueAtTime(0.0002, t + ndur);
+      env2.gain.linearRampToValueAtTime(0, t + ndur + 0.004);
+      src.connect(hp); hp.connect(env2); env2.connect(g);
+      src.start(t, off * s._noiseBuf.duration * 0.9);
+      src.stop(t + ndur + 0.02);
     } catch (e) {}
   }
 }
 
 /* ---- src/audio/Sound.js ---- */
-/* Fircasiz motor sesi icin yerel sabitler (CONFIG'e bagli degil). */
-const HOVER_HARMONICS = [
-  { mult: 1,   vol: 0.50 },   // temel
-  { mult: 2,   vol: 0.30 },   // 2. harmonik
-  { mult: 3,   vol: 0.18 },   // 3. harmonik
-  { mult: 4.9, vol: 0.07 },   // yukselton (fritter)
-];
-const HOVER_BASE_FREQ = 85;   // Hz — level=1.0'daki temel frekans
-const HOVER_LEVEL_MIN = 0.6;  // level araligi (hiza gore)
-const HOVER_LEVEL_MAX = 1.0;
+/* Fircasiz motor sesi icin yedek sabitler. Asil degerler audio.config.js
+   icinde CONFIG.SOUND.hover altindadir; bu nesne yalnizca CONFIG eksikse
+   devreye giren guvenli varsayilandir (hicbir cagri hata firlatmasin). */
+const HOVER_DEFAULTS = {
+  harmonics: [
+    { mult: 1,   vol: 0.50 },   // temel
+    { mult: 2,   vol: 0.30 },   // 2. harmonik
+    { mult: 3,   vol: 0.18 },   // 3. harmonik
+    { mult: 4.9, vol: 0.07 },   // yukselton (fritter)
+  ],
+  baseFreq: 85,     // Hz — level=1.0'daki temel frekans
+  levelMin: 0.6, levelMax: 1.0,
+  gain: 0.08,       // surekli vizilti seviyesi (efektlerin onune gecmez)
+  amHz: 28, amDepth: 0.02,
+  attack: 0.15, glide: 0.05, gainGlide: 0.08, release: 0.10, stopMs: 400,
+};
+
+/* Mix yedek sabitleri (round 23). Asil degerler CONFIG.SOUND.mix altinda;
+   burasi CONFIG eksik/kismi ise devreye giren guvenli taban. */
+const MIX_DEFAULTS = {
+  noiseSec: 2,               // gurultu tamponu uzunlugu (s) — ofset cesitliligi
+  limitThreshold: -3, limitKnee: 6, limitRatio: 8,
+  limitAttack: 0.003, limitRelease: 0.18,
+  fxThreshold: -12, fxKnee: 10, fxRatio: 3.5,
+  fxAttack: 0.002, fxRelease: 0.14,
+  spaceDelay: 0.085, spaceFeedback: 0.30, spaceTone: 2400, spaceGain: 0.45,
+  priorityReserve: 4,        // oncelikli seslerin ek yuva payi
+};
 
 class Sound {
   constructor() {
@@ -1360,10 +1583,53 @@ class Sound {
     this.muted = false;
     this._active = 0;          // aktif ses sayaci (toplam kazanc siniri)
     this._noiseBuf = null;     // once uretilen gürültü tamponu
-    this._hover = null;        // surekli hover sesi (tek instance)
+    this._hover = null;        // surekli hover sesi (tek instance: {oscs,oscGains,env,lfo,lfoGain})
+    this._hoverStop = null;    // sonumleme sonrasi yikim zamanlayicisi (setTimeout id)
+    /* Round 23 mix zinciri. hover ve muzik master'a DOGRUDAN baglanir;
+       yalniz efektler _fxBus'tan gecer (asagida gerekce var). */
+    this._fxBus = null;        // efekt veri yolu (yumusak sikistirici)
+    this._limiter = null;      // master cikisi: tepe emniyeti
+    this._spaceIn = null;      // mekan (kisa geri besleme gecikmesi) gonderisi
+    this._spaceNodes = null;
+    /* Mantiksal hover bayragi — sesin GERCEKTEN duyulmasindan BAGIMSIZ.
+       Autotest'te ctx askidadir ve hicbir dugum kurulmaz, ama hover DEVREDE
+       ise bu bayrak yine true olur; olcum bunu okur (Game.state().sound.hover). */
+    this.hoverOn = false;
+    this.hoverLevel = 1;       // son istenen seviye (0.6-1.0)
+    /* DETERMINIZM: ses tarafinda Math.random() YOK. Gurultu tamponu ve atis
+       basina varyasyon bu iki sayactan turetilir. Sim ne _seed'i ne _varN'i
+       okur/yazar; Sound sim durumuna hicbir sey yazmaz. Sim LCG'lerine de
+       DOKUNMAZ — dokunsaydi altin iz catallanirdi. */
+    this._seed = 0x1a2b3c4d | 0;
+    this._varN = 0;
     this.music = new Music();  // katmanli prosedurel muzik (round 19)
     this._musicWasPlaying = false;
     this.music.attach(this);
+  }
+  /* ---------------------------------------------- deterministik varyasyon */
+  _rndBits() { this._seed = (Math.imul(this._seed, 1664525) + 1013904223) | 0; return this._seed; }
+  _rnd01() { return ((this._rndBits() >>> 8) & 0xffffff) / 0x1000000; }
+  /* Atis basina 0..1 arasi kucuk varyasyon. Sayac tabanli (saat degil), yani
+     tekrarlanabilir; sim tarafindan ne okunur ne yazilir. */
+  _var() {
+    this._varN = (this._varN + 1) & 0x3fffffff;
+    let n = this._varN | 0;
+    n = Math.imul(n ^ (n >>> 15), 0x2545f491) | 0;
+    n = (n ^ (n >>> 13)) | 0;
+    return ((n >>> 8) & 0xffff) / 0x10000;
+  }
+  _mix(k) {
+    const m = (typeof CONFIG !== 'undefined' && CONFIG.SOUND && CONFIG.SOUND.mix) || null;
+    if (m && m[k] != null) return m[k];
+    return MIX_DEFAULTS[k];
+  }
+  _mkComp(th, knee, ratio, atk, rel) {
+    try {
+      const c = this.ctx.createDynamicsCompressor();
+      c.threshold.value = th; c.knee.value = knee; c.ratio.value = ratio;
+      c.attack.value = atk; c.release.value = rel;
+      return c;
+    } catch (e) { return null; }
   }
   /* Ilk kullanici etkilesinde cagrilir. Askida kalabilir — hata YOK. */
   unlock() {
@@ -1377,15 +1643,60 @@ class Sound {
       this.ctx = new AC();
       this.master = this.ctx.createGain();
       this.master.gain.value = CONFIG.SOUND.masterGain;
-      this.master.connect(this.ctx.destination);
-      // 1 sn beyaz gürültü tamponu (isabet/olum sesleri icin)
-      const len = this.ctx.sampleRate;
-      this._noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-      const d = this._noiseBuf.getChannelData(0);
-      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      /* Cikis emniyeti: tepe sinirlayici. Normal seviyede DEVREYE GIRMEZ;
+         yalniz ayni anda cok ses caldiginda kirpilma (clip) yerine yumusak
+         bastirma yapar. Onceden hicbir tavan yoktu: 8 ses ust uste bindiginde
+         toplam genlik 1.0'i asiyor ve dijital kirpilma duyuluyordu. */
+      this._limiter = this._mkComp(this._mix('limitThreshold'), this._mix('limitKnee'),
+                                   this._mix('limitRatio'), this._mix('limitAttack'),
+                                   this._mix('limitRelease'));
+      if (this._limiter) { this.master.connect(this._limiter); this._limiter.connect(this.ctx.destination); }
+      else this.master.connect(this.ctx.destination);
+      /* Efekt veri yolu: yalniz SES EFEKTLERI buradan gecer. Hover ugultusu ve
+         muzik master'a dogrudan baglidir — boylece her atista surekli motor
+         sesi "pompalanmaz" ve muzik nefes almaz. */
+      this._fxBus = this._mkComp(this._mix('fxThreshold'), this._mix('fxKnee'),
+                                 this._mix('fxRatio'), this._mix('fxAttack'),
+                                 this._mix('fxRelease'));
+      if (this._fxBus) this._fxBus.connect(this.master);
+      this._buildSpace();
+      this._buildNoise();
     } catch (e) { this.ctx = null; }
     // Muzik caliyorduysa (orn. mute sonrasi unlock) yeniden baslat.
     if (this.music && !this.muted && this._musicWasPlaying) this.music.start();
+    // Hover devredeyse ses artik acilabilir — dugumleri kur.
+    if (this.hoverOn) this.hover(this.hoverLevel);
+  }
+  /* Kisa geri beslemeli gecikme: "gece sehri" derinligi. Konvolusyon yerine
+     gecikme — mobilde ucuz, dosya gerektirmez, kapatmak icin spaceGain=0. */
+  _buildSpace() {
+    try {
+      const c = this.ctx;
+      const inG = c.createGain(); inG.gain.value = 1;
+      const dly = c.createDelay(0.5); dly.delayTime.value = this._mix('spaceDelay');
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = this._mix('spaceTone');
+      const fb = c.createGain(); fb.gain.value = this._mix('spaceFeedback');
+      const out = c.createGain(); out.gain.value = this._mix('spaceGain');
+      inG.connect(dly); dly.connect(lp); lp.connect(fb); fb.connect(dly);
+      lp.connect(out); out.connect(this.master);
+      this._spaceIn = inG;
+      this._spaceNodes = { dly, lp, fb, out };
+    } catch (e) { this._spaceIn = null; this._spaceNodes = null; }
+  }
+  /* Gurultu tamponu — DETERMINISTIK (Math.random YOK). 2 sn: her sesin
+     tampona farkli yerden girmesi icin yeterli cesitlilik.
+     AYRI try: tampon uretilemezse (bellek/uygulama farki) SES TUMDEN olmesin —
+     tonal sesler calmaya devam eder, yalniz gurultu katmani duser. */
+  _buildNoise() {
+    try {
+      const secs = Math.max(0.5, this._mix('noiseSec'));
+      const len = Math.floor(this.ctx.sampleRate * secs);
+      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = this._rnd01() * 2 - 1;
+      this._noiseBuf = buf;
+    } catch (e) { this._noiseBuf = null; }
   }
   toggleMute() {
     this.muted = !this.muted;
@@ -1398,152 +1709,366 @@ class Sound {
         this.music.start();
       }
     }
+    // Hover mantiksal olarak devrede kalir; yalnizca sesi susar/geri doner.
+    if (this.muted) this._hoverFade();
+    else if (this.hoverOn) this.hover(this.hoverLevel);
   }
   _ready() { return this.ctx && this.ctx.state === 'running' && !this.muted; }
-  /* Toplam kazanc siniri: aktif ses sayacina gore master gain'i dusur. */
-  _gate() {
+  /* Toplam kazanc siniri: aktif ses sayacina gore yeni ses reddedilir.
+     opt: { prio, pan, send }.
+     - prio: oncelikli sesler (oyuncunun kendi silahi, olum, boss) ek yuva
+       payindan yararlanir. Onceden 8 yuva dolunca OYUNCUNUN ATIS SESI de
+       sessizce dusuyordu; yogun catismada silah "bozulmus" gibi duyuluyordu.
+     - Bir ses BIRDEN COK parcadan olussa bile TEK yuva tutar (parca sayaci
+       g._n). Onceden enemyDeath uc ayri yuva yiyordu — tek bir olum, sekiz
+       sesin ucunu birden harciyordu. */
+  _gate(opt) {
     if (!this._ready()) return null;
-    if (this._active >= CONFIG.SOUND.maxConcurrent) return null;
+    const o = opt || {};
+    const base = (CONFIG.SOUND && CONFIG.SOUND.maxConcurrent) || 8;
+    const cap = base + (o.prio ? this._mix('priorityReserve') : 0);
+    if (this._active >= cap) return null;
     this._active++;
     const g = this.ctx.createGain();
-    g.connect(this.master);
+    g._n = 0; g._pan = null; g._send = null;
+    let tail = g;
+    if (o.pan) {
+      try {
+        if (this.ctx.createStereoPanner) {
+          const p = this.ctx.createStereoPanner();
+          p.pan.value = Math.max(-1, Math.min(1, o.pan));
+          tail.connect(p); tail = p; g._pan = p;
+        }
+      } catch (e) {}
+    }
+    tail.connect(this._fxBus || this.master);
+    if (o.send > 0 && this._spaceIn) {
+      try {
+        const s = this.ctx.createGain();
+        s.gain.value = o.send;
+        tail.connect(s); s.connect(this._spaceIn); g._send = s;
+      } catch (e) {}
+    }
     return g;
   }
-  _release(g) { if (g) { g.disconnect(); this._active--; } }
-  /* Kisa tonal ses: frekans, sure, dalga tipi, gain envelope. */
-  _tone(freq, dur, type, vol, target) {
-    const g = target || this._gate();
+  _hold(g) { if (g) g._n = (g._n || 0) + 1; }
+  _release(g) {
     if (!g) return;
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    osc.type = type || 'square';
-    osc.frequency.setValueAtTime(freq, t);
-    const env = this.ctx.createGain();
-    env.gain.setValueAtTime(vol, t);
-    env.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    osc.connect(env); env.connect(g);
-    osc.start(t); osc.stop(t + dur);
-    osc.onended = () => this._release(g);
+    g._n = (g._n || 1) - 1;
+    if (g._n > 0) return;
+    const kill = (n) => { if (n) { try { n.disconnect(); } catch (e) {} } };
+    kill(g._send); kill(g._pan); kill(g);
+    g._send = null; g._pan = null;
+    this._active--;
+    if (this._active < 0) this._active = 0;
   }
-  /* Gürültü patlamasi: bandpass filtreli, sure + gain envelope. */
-  _noise(dur, freq, q, vol, target) {
-    const g = target || this._gate();
-    if (!g) return;
-    const t = this.ctx.currentTime;
-    const src = this.ctx.createBufferSource();
-    src.buffer = this._noiseBuf;
-    src.loop = true;
-    const filt = this.ctx.createBiquadFilter();
-    filt.type = 'bandpass'; filt.frequency.value = freq; filt.Q.value = q || 1;
+  /* Ortak zarf. ONEMLI: eskiden `setValueAtTime(vol, t)` ile 0'dan tepe degere
+     ANINDA siciliyordu — bu bir dalga formu sicramasidir, genis bantli bir
+     "tik" duyulur ve her sesin onune ayni tik yapisir. Burada atak cok kisa
+     (varsayilan 2 ms, atis transientlerinde 0.6 ms) ama SIFIR DEGIL: vurus
+     keskin kalir, tik gider. Kuyrukta da 0.0001'de kesmek yerine sifira
+     dogrusal iniyoruz — bitis tiki de yok. */
+  _env(t, dur, vol, atk) {
+    const a = Math.max(0.0005, atk == null ? 0.002 : atk);
+    const v = Math.max(0.0002, vol);
+    const d = Math.max(a + 0.006, dur);
     const env = this.ctx.createGain();
-    env.gain.setValueAtTime(vol, t);
-    env.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    src.connect(filt); filt.connect(env); env.connect(g);
-    src.start(t); src.stop(t + dur);
-    src.onended = () => this._release(g);
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(v, t + a);
+    env.gain.exponentialRampToValueAtTime(0.0002, t + d);
+    env.gain.linearRampToValueAtTime(0, t + d + 0.005);
+    return { env, end: t + d + 0.008 };
+  }
+  /* Kisa tonal ses. opt: {delay, atk, sweepTo, lp, lpQ, detune, prio, pan, send} */
+  _tone(freq, dur, type, vol, target, opt) {
+    const o = opt || {};
+    const g = target || this._gate(o);
+    if (!g) return;
+    this._hold(g);
+    try {
+      const t = this.ctx.currentTime + (o.delay || 0);
+      const osc = this.ctx.createOscillator();
+      osc.type = type || 'square';
+      osc.frequency.setValueAtTime(Math.max(1, freq), t);
+      if (o.sweepTo) osc.frequency.exponentialRampToValueAtTime(Math.max(1, o.sweepTo), t + Math.max(0.01, dur));
+      if (o.detune) { try { osc.detune.setValueAtTime(o.detune, t); } catch (e) {} }
+      const e = this._env(t, dur, vol, o.atk);
+      let node = osc;
+      if (o.lp) {
+        const f = this.ctx.createBiquadFilter();
+        f.type = 'lowpass'; f.frequency.value = o.lp; f.Q.value = o.lpQ || 0.7;
+        node.connect(f); node = f;
+      }
+      node.connect(e.env); e.env.connect(g);
+      osc.start(t); osc.stop(e.end);
+      osc.onended = () => this._release(g);
+    } catch (err) { this._release(g); }
+  }
+  /* Gürültü patlamasi. opt: {delay, atk, type, sweepTo, offset, prio, pan, send}
+     type: 'bandpass' (varsayilan) | 'lowpass' | 'highpass'
+     sweepTo: filtre frekansi sure boyunca buraya kayar — patlamanin acilip
+     donuklasmasi bu kaymadan gelir (sabit bantli gurultu "sss" gibi durur).
+     offset: 0..1, tampona giris noktasi — ayni gurultu deseni tekrar etmesin. */
+  _noise(dur, freq, q, vol, target, opt) {
+    const o = opt || {};
+    const g = target || this._gate(o);
+    if (!g) return;
+    this._hold(g);
+    if (!this._noiseBuf) { this._release(g); return; }
+    try {
+      const t = this.ctx.currentTime + (o.delay || 0);
+      const src = this.ctx.createBufferSource();
+      src.buffer = this._noiseBuf;
+      src.loop = true;
+      const filt = this.ctx.createBiquadFilter();
+      filt.type = o.type || 'bandpass';
+      filt.frequency.setValueAtTime(Math.max(20, freq), t);
+      if (o.sweepTo) filt.frequency.exponentialRampToValueAtTime(Math.max(20, o.sweepTo), t + Math.max(0.01, dur));
+      filt.Q.value = q || 1;
+      const e = this._env(t, dur, vol, o.atk);
+      src.connect(filt); filt.connect(e.env); e.env.connect(g);
+      const off = Math.max(0, Math.min(0.98, o.offset || 0)) * this._noiseBuf.duration;
+      src.start(t, off); src.stop(e.end);
+      src.onended = () => this._release(g);
+    } catch (err) { this._release(g); }
   }
   /* Frekans kaydirma (pitch sweep): from -> to, sure icinde. */
-  _sweep(f0, f1, dur, type, vol) {
-    const g = this._gate();
-    if (!g) return;
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    osc.type = type || 'sawtooth';
-    osc.frequency.setValueAtTime(f0, t);
-    osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
-    const env = this.ctx.createGain();
-    env.gain.setValueAtTime(vol, t);
-    env.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    osc.connect(env); env.connect(g);
-    osc.start(t); osc.stop(t + dur);
-    osc.onended = () => this._release(g);
+  _sweep(f0, f1, dur, type, vol, target, opt) {
+    const o = opt || {};
+    this._tone(f0, dur, type || 'sawtooth', vol, target,
+               { delay: o.delay, atk: o.atk, sweepTo: f1, lp: o.lp, prio: o.prio, pan: o.pan, send: o.send });
   }
-  /* --------------------------------------------------- hover (fircasiz motor) */
-  /* Surekli dusuk seviyeli vizilti; level (0.6-1.0) perdede/genlikte hafif degisiklik. */
+  /* --------------------------------------------------- hover (fircasiz motor)
+     Surekli dusuk seviyeli vizilti; level (0.6-1.0) perdeyi ve genligi kaydirir.
+     SES BUTCESI: hover `_gate()` KULLANMAZ, dogrudan master'a baglanir. Sebep:
+     (1) surekli calan tek bir vizilti, 8 esz amanli ses kotasindan kalici bir yer
+     yeseydi atis/patlama sesleri bir slot eksigiyle calisirdi; (2) ters yonde,
+     gate'e sokulsaydi yogun catismada `_active >= maxConcurrent` oldugu an hover
+     SESSIZCE DUSERDI ve motor sesi rastgele kesilirdi. Ikisi de istenmiyor;
+     seviyesi zaten dusuk (CONFIG.SOUND.hover.gain) ve tek instance.
+     Round 23: hover ayrica efekt veri yolundan (_fxBus) da GECMEZ — gecseydi
+     her atis/patlama motor ugultusunu bastirir, motor "kekeliyor" gibi olurdu. */
+  _hoverCfg() { return (CONFIG.SOUND && CONFIG.SOUND.hover) || HOVER_DEFAULTS; }
+  /* Olcum kancasi: hover DEVREDE mi? Sesin duyulup duyulmadigindan bagimsiz
+     (autotest'te ctx askida, mute'ta sessiz — bayrak yine dogruyu soyler). */
+  hoverActive() { return this.hoverOn; }
   hover(level) {
-    const lv = Math.max(HOVER_LEVEL_MIN, Math.min(HOVER_LEVEL_MAX, level || 1));
-    if (!this.ctx || this.ctx.state !== 'running') return;
-    const t = this.ctx.currentTime;
-    const baseFreq = HOVER_BASE_FREQ * lv;
-    // Mevcut hover varsa parametreleri guncelle (yeniden olusturma).
-    if (this._hover) {
-      const h = this._hover;
-      for (let i = 0; i < h.oscs.length; i++) {
-        const target = baseFreq * HOVER_HARMONICS[i].mult;
-        try { h.oscs[i].frequency.setTargetAtTime(target, t, 0.05); } catch(e) {}
-      }
-      try { h.env.gain.setTargetAtTime(0.08 * lv, t, 0.08); } catch(e) {}
-      return;
-    }
-    // Ilk kurulum: harmonik osilatörler + am modülasyonu (rotor hissi).
-    const env = this.ctx.createGain();
-    env.gain.value = 0;
-    env.connect(this.master);
-    const oscs = [];
-    for (let i = 0; i < HOVER_HARMONICS.length; i++) {
-      const h = HOVER_HARMONICS[i];
-      const osc = this.ctx.createOscillator();
-      osc.type = i === 0 ? 'sawtooth' : 'sine';
-      osc.frequency.value = baseFreq * h.mult;
-      const og = this.ctx.createGain();
-      og.gain.value = h.vol;
-      osc.connect(og); og.connect(env);
-      osc.start(t);
-      oscs.push(osc);
-    }
-    // Hafif am modülasyonu (~28 Hz) — rotor dönme hissi.
-    const lfo = this.ctx.createOscillator();
-    lfo.type = 'sine'; lfo.frequency.value = 28;
-    const lfoGain = this.ctx.createGain();
-    lfoGain.gain.value = 0.02 * lv;
-    lfo.connect(lfoGain); lfoGain.connect(env.gain);
-    lfo.start(t);
-    this._hover = { oscs, env, lfo, lfoGain };
-    // Fade-in.
-    env.gain.setTargetAtTime(0.08 * lv, t, 0.15);
-  }
-  stopHover() {
-    if (!this._hover || !this.ctx) return;
-    const h = this._hover;
-    const t = this.ctx.currentTime;
+    const H = this._hoverCfg();
+    const lv = Math.max(H.levelMin, Math.min(H.levelMax, level || 1));
+    // Mantiksal durum her kosulda guncellenir (ses kurulmasa bile).
+    this.hoverOn = true;
+    this.hoverLevel = lv;
+    // Askida / susturulmus: dugum kurma, varsa yumusakca sustur. Hata YOK.
+    if (!this._ready()) { this._hoverFade(); return; }
     try {
-      h.env.gain.setTargetAtTime(0, t, 0.1);
-      setTimeout(() => {
-        try { h.oscs.forEach(o => o.stop()); } catch(e) {}
-        try { h.lfo.stop(); } catch(e) {}
-        try { h.env.disconnect(); } catch(e) {}
-        try { h.lfoGain.disconnect(); } catch(e) {}
-      }, 400);
+      const t = this.ctx.currentTime;
+      const baseFreq = H.baseFreq * lv;
+      const harm = H.harmonics || HOVER_DEFAULTS.harmonics;
+      // Sonumlenmekte olan bir hover varsa yikimi iptal et, ayni dugumleri geri ac.
+      if (this._hoverStop) { clearTimeout(this._hoverStop); this._hoverStop = null; }
+      // Mevcut hover varsa parametreleri guncelle (YENIDEN OLUSTURMA — osilatör yigilmaz).
+      if (this._hover) {
+        const h = this._hover;
+        const n = Math.min(h.oscs.length, harm.length);
+        for (let i = 0; i < n; i++) {
+          try { h.oscs[i].frequency.setTargetAtTime(baseFreq * harm[i].mult, t, H.glide); } catch(e) {}
+        }
+        try { h.env.gain.setTargetAtTime(H.gain * lv, t, H.gainGlide); } catch(e) {}
+        try { h.lfoGain.gain.setTargetAtTime(H.amDepth * lv, t, H.gainGlide); } catch(e) {}
+        return;
+      }
+      // Ilk kurulum: harmonik osilatörler + am modülasyonu (rotor hissi).
+      const env = this.ctx.createGain();
+      env.gain.value = 0;
+      env.connect(this.master);
+      const oscs = [], oscGains = [];
+      for (let i = 0; i < harm.length; i++) {
+        const hh = harm[i];
+        const osc = this.ctx.createOscillator();
+        osc.type = i === 0 ? 'sawtooth' : 'sine';
+        osc.frequency.value = baseFreq * hh.mult;
+        const og = this.ctx.createGain();
+        og.gain.value = hh.vol;
+        osc.connect(og); og.connect(env);
+        osc.start(t);
+        oscs.push(osc); oscGains.push(og);
+      }
+      // Hafif am modülasyonu (~28 Hz) — rotor dönme hissi.
+      const lfo = this.ctx.createOscillator();
+      lfo.type = 'sine'; lfo.frequency.value = H.amHz;
+      const lfoGain = this.ctx.createGain();
+      lfoGain.gain.value = H.amDepth * lv;
+      lfo.connect(lfoGain); lfoGain.connect(env.gain);
+      lfo.start(t);
+      this._hover = { oscs, oscGains, env, lfo, lfoGain };
+      // Fade-in.
+      env.gain.setTargetAtTime(H.gain * lv, t, H.attack);
+    } catch (e) { this._hoverTeardown(); }
+  }
+  /* Idempotent: arka arkaya cagrilabilir, ikinci cagri hicbir sey yapmaz. */
+  stopHover() {
+    this.hoverOn = false;
+    this._hoverFade();
+  }
+  /* Sonumlendir, sonra dugumleri yik. Zaten sonuyorsa dokunma (cift zamanlayici yok). */
+  _hoverFade() {
+    const h = this._hover;
+    if (!h) { this._hoverTeardown(); return; }
+    if (this._hoverStop) return;
+    const H = this._hoverCfg();
+    try {
+      if (this.ctx) h.env.gain.setTargetAtTime(0, this.ctx.currentTime, H.release);
     } catch(e) {}
+    this._hoverStop = setTimeout(() => {
+      this._hoverStop = null;
+      this._hoverTeardown();
+    }, H.stopMs);
+  }
+  /* Tum hover dugumlerini durdur + kopar. Cagrilmasi her zaman guvenli. */
+  _hoverTeardown() {
+    if (this._hoverStop) { clearTimeout(this._hoverStop); this._hoverStop = null; }
+    const h = this._hover;
+    if (!h) return;
     this._hover = null;
+    const kill = (n) => { try { if (n.stop) n.stop(); } catch(e) {} try { n.disconnect(); } catch(e) {} };
+    try { h.oscs.forEach(kill); } catch(e) {}
+    try { h.oscGains.forEach(kill); } catch(e) {}
+    kill(h.lfo); kill(h.lfoGain); kill(h.env);
   }
-  /* --------------------------------------------------- oyun olaylari */
-  /* Kuru, kisa atis sesi (fircasiz karakter). */
-  playerShot() { this._tone(1200, 0.025, 'square', 0.12); }
-  enemyShot()  { this._tone(220, 0.08, 'triangle', 0.12); }
-  bossShot()   { this._tone(110, 0.12, 'sawtooth', 0.15); this._noise(0.1, 200, 0.5, 0.06); }
-  hit()        { this._noise(0.06, 3000, 2, 0.2); }
+  /* --------------------------------------------------- oyun olaylari
+     Her olay TEK ses yuvasi tutar; katmanlar ayni `g` uzerine binir.
+     Zamanlanmis parcalar setTimeout DEGIL, ses saati (opt.delay) kullanir —
+     kare gecikmesinden bagimsiz, orneklem hassasiyetinde. */
+  /* Birincil silah: saniyede birkac kez calar; en cok duyulan ses budur.
+     (1) 14 ms parlak transient  = vurus / "snap" (onceden hic yoktu),
+     (2) hizla asagi kayan govde = elektrikli silah karakteri,
+     (3) kisa alt vurus          = agirlik.
+     Her atista perde/gurultu-ofseti/panorama deterministik olarak biraz
+     kayar; ayni dalga formunun saniyede bes kez tekrari yorucuydu. */
+  playerShot() {
+    const v = this._var(), w = this._var();
+    const g = this._gate({ prio: true, send: 0.05, pan: (v - 0.5) * 0.24 });
+    if (!g) return;
+    this._hold(g);
+    const det = 1 + (v - 0.5) * 0.08;
+    this._noise(0.014, 3800 + v * 1800, 0.7, 0.085, g, { type: 'highpass', atk: 0.0006, offset: w, sweepTo: 1800 });
+    this._tone(1460 * det, 0.05, 'square', 0.10, g, { sweepTo: 560 * det, atk: 0.0008, lp: 5400 });
+    this._tone(196, 0.055, 'sine', 0.045, g, { sweepTo: 120, atk: 0.0012 });
+    this._release(g);
+  }
+  /* Dusman atisi: kuru, alcak, kisa; genis panorama (ekranin baska yerinden). */
+  enemyShot() {
+    const v = this._var();
+    const g = this._gate({ send: 0.04, pan: (v - 0.5) * 0.5 });
+    if (!g) return;
+    this._hold(g);
+    this._tone(300 + v * 40, 0.07, 'sawtooth', 0.095, g, { sweepTo: 150, atk: 0.001, lp: 1700 });
+    this._noise(0.022, 1800, 0.8, 0.05, g, { offset: v, atk: 0.0008 });
+    this._release(g);
+  }
+  /* Boss atisi: agir, alcak, gecikmeli govdeli. */
+  bossShot() {
+    const v = this._var();
+    const g = this._gate({ prio: true, send: 0.12 });
+    if (!g) return;
+    this._hold(g);
+    this._tone(132, 0.22, 'sawtooth', 0.13, g, { sweepTo: 46, atk: 0.002, lp: 900 });
+    this._noise(0.18, 900, 0.6, 0.07, g, { type: 'lowpass', sweepTo: 220, offset: v, atk: 0.002 });
+    this._release(g);
+  }
+  /* Isabet: metalik, cok kisa. Gurultu tamponuna her seferinde farkli yerden
+     girilir — art arda isabetler ayni "tik"in kopyasi gibi duyulmasin. */
+  hit() {
+    const v = this._var();
+    const g = this._gate({ send: 0.05, pan: (v - 0.5) * 0.4 });
+    if (!g) return;
+    this._hold(g);
+    this._noise(0.055, 2600 + v * 1400, 2.2, 0.16, g, { offset: v, atk: 0.0006, sweepTo: 1400 });
+    this._tone(2100 + v * 500, 0.035, 'triangle', 0.05, g, { atk: 0.0006 });
+    this._release(g);
+  }
   /* Kara hedefine isabet: metalik, tok, alcak perdeli (hit'ten daha alcak). */
-  groundHit()  { this._noise(0.05, 1200, 3, 0.22); this._tone(180, 0.08, 'square', 0.14); }
-  /* Kara hedefi olumu: patlama + kisa metal cinlama kuyrugu. */
+  groundHit() {
+    const v = this._var();
+    const g = this._gate({ send: 0.07, pan: (v - 0.5) * 0.3 });
+    if (!g) return;
+    this._hold(g);
+    this._noise(0.05, 1500, 2.5, 0.17, g, { offset: v, atk: 0.0008, sweepTo: 600 });
+    this._tone(210, 0.09, 'square', 0.11, g, { sweepTo: 120, atk: 0.001, lp: 1200 });
+    this._release(g);
+  }
+  /* Kara hedefi olumu: patlama + kisa metal cinlama kuyrugu.
+     Sub, hover ugultusunun (85 Hz) ALTINA kayarak biter; sabit vizilti ile
+     patlamanin govdesi ayni bantta birbirini bulandirmasin diye. */
   groundDeath() {
-    this._noise(0.3, 300, 0.8, 0.25);
-    this._tone(120, 0.2, 'sine', 0.18);
-    setTimeout(() => this._tone(2400, 0.12, 'triangle', 0.06), 80);
+    const v = this._var();
+    const g = this._gate({ prio: true, send: 0.28, pan: (v - 0.5) * 0.24 });
+    if (!g) return;
+    this._hold(g);
+    this._noise(0.05, 4200, 0.5, 0.14, g, { type: 'highpass', offset: v, atk: 0.0005, sweepTo: 1600 });
+    this._noise(0.45, 1600, 0.5, 0.21, g, { type: 'lowpass', offset: 0.3 + v * 0.4, atk: 0.004, sweepTo: 150 });
+    this._tone(66, 0.40, 'sine', 0.19, g, { sweepTo: 30, atk: 0.005 });
+    this._tone(2350, 0.14, 'triangle', 0.05, g, { delay: 0.08, atk: 0.002 });
+    this._tone(3120, 0.11, 'triangle', 0.035, g, { delay: 0.105, atk: 0.002 });
+    this._release(g);
   }
-  /* Uckasavar patlamasi: kuru, kisa gurultu patlamasi (hava patlamasi hissi). */
-  flak()       { this._noise(0.08, 1500, 1.5, 0.2); }
-  /* Alcalan gurultu + kisa govde — dusus hissi. */
+  /* Uckasavar patlamasi: kuru, kisa hava patlamasi — parlak baslar, donuklasir. */
+  flak() {
+    const v = this._var();
+    const g = this._gate({ send: 0.14, pan: (v - 0.5) * 0.6 });
+    if (!g) return;
+    this._hold(g);
+    this._noise(0.09, 2600 + v * 900, 0.7, 0.16, g, { type: 'lowpass', offset: v, atk: 0.0008, sweepTo: 500 });
+    this._tone(120, 0.08, 'sine', 0.07, g, { sweepTo: 60, atk: 0.002 });
+    this._release(g);
+  }
+  /* Dusman olumu: on uc (parlak), govde (alcalan gurultu), sub, dusus kuyrugu.
+     Dortu de TEK yuvada — eskiden uc ayri yuva yiyordu. */
   enemyDeath() {
-    this._sweep(500, 60, 0.35, 'sawtooth', 0.18);
-    this._noise(0.2, 400, 0.7, 0.18);
-    this._tone(90, 0.15, 'sine', 0.15);
+    const v = this._var();
+    const g = this._gate({ prio: true, send: 0.22, pan: (v - 0.5) * 0.3 });
+    if (!g) return;
+    this._hold(g);
+    this._noise(0.045, 5200, 0.5, 0.15, g, { type: 'highpass', offset: v, atk: 0.0005, sweepTo: 2200 });
+    this._noise(0.34, 2200, 0.6, 0.19, g, { type: 'lowpass', offset: 1 - v * 0.5, atk: 0.003, sweepTo: 190 });
+    this._tone(78, 0.30, 'sine', 0.16, g, { sweepTo: 34, atk: 0.004 });
+    this._tone(430, 0.16, 'sawtooth', 0.05, g, { sweepTo: 70, atk: 0.004, lp: 1400 });
+    this._release(g);
   }
-  bossWarn()   { this._tone(440, 0.3, 'square', 0.2); setTimeout(() => this._tone(550, 0.3, 'square', 0.2), 350); }
-  stageChange(){ this._tone(330, 0.15, 'triangle', 0.18); setTimeout(() => this._tone(494, 0.2, 'triangle', 0.18), 180); }
-  victory()    {
-    const notes = [523, 659, 784];
-    notes.forEach((f, i) => setTimeout(() => this._tone(f, 0.3, 'triangle', 0.15), i * 120));
+  /* Uyari: iki notali korna. Ikinci ses ses saatinden zamanlanir (setTimeout
+     yerine) ve hafif detune ikizle kalinlastirilir. */
+  bossWarn() {
+    const g = this._gate({ prio: true, send: 0.25 });
+    if (!g) return;
+    this._hold(g);
+    this._tone(440, 0.30, 'square', 0.15, g, { atk: 0.006, lp: 2400 });
+    this._tone(440, 0.30, 'square', 0.07, g, { atk: 0.006, lp: 2400, detune: 9 });
+    this._tone(550, 0.32, 'square', 0.15, g, { delay: 0.35, atk: 0.006, lp: 2400 });
+    this._tone(550, 0.32, 'square', 0.07, g, { delay: 0.35, atk: 0.006, lp: 2400, detune: 9 });
+    this._release(g);
+  }
+  stageChange() {
+    const g = this._gate({ prio: true, send: 0.20 });
+    if (!g) return;
+    this._hold(g);
+    this._tone(330, 0.15, 'triangle', 0.16, g, { atk: 0.004, lp: 3000 });
+    this._tone(494, 0.20, 'triangle', 0.16, g, { delay: 0.18, atk: 0.004, lp: 3000 });
+    this._tone(988, 0.16, 'sine', 0.05, g, { delay: 0.18, atk: 0.004 });
+    this._release(g);
+  }
+  victory() {
+    const g = this._gate({ prio: true, send: 0.30 });
+    if (!g) return;
+    this._hold(g);
+    const notes = [523, 659, 784, 1046];
+    for (let i = 0; i < notes.length; i++) {
+      const dly = i * 0.12;
+      const dur = i === notes.length - 1 ? 0.55 : 0.30;
+      this._tone(notes[i], dur, 'triangle', 0.13, g, { delay: dly, atk: 0.005, lp: 4000 });
+      this._tone(notes[i], dur, 'triangle', 0.05, g, { delay: dly, atk: 0.005, lp: 4000, detune: 7 });
+      this._tone(notes[i] * 0.5, dur, 'sine', 0.06, g, { delay: dly, atk: 0.006 });
+    }
+    this._release(g);
   }
 }
 
@@ -1808,7 +2333,9 @@ class FallingWreck {
     this.ang += this.av * dt;                        // kirilan pervane: donerek suzulur
     // arkasinda incelen duman izi (parcacik havuzu — gruplu cizim)
     this._smokeAcc += dt;
-    while (this._smokeAcc >= W.smokeEvery) {
+    // smokeEvery > 0 sarti: sabit 0/undefined olursa `while` ya hic donmez
+    // (ozellik sessizce olur — Round 15'te tam bu oldu) ya da sonsuz doner.
+    while (W.smokeEvery > 0 && this._smokeAcc >= W.smokeEvery) {
       this._smokeAcc -= W.smokeEvery;
       const p = fx.smoke.acquire();
       if (!p) break;
@@ -2021,6 +2548,33 @@ class FxSystem {
     this._ambientGlitch = Math.max(0, Math.min(1, level || 0));
   }
   get glitchActive() { return this._glitchT > 0 || this._ambientGlitch > 0; }
+  /* ---------------------------------------------------------------- olcum
+     Round 22: bu iki ozellik (dusen hurda + glitch) yazilmisti ama hicbir
+     kapi onlari goremiyordu; enkaz NaN koordinata ucsa bile ekranda ayirt
+     edilemiyordu. Asagidakiler game paketinin state() kancasiyla disari
+     verecegi duz okuyuculardir. YALNIZ OKUR — sim'e de cizime de dokunmaz. */
+  wreckCount() { return this.wrecks.count(); }
+  /* Tum aktif enkazin x/y/ang degerleri sonlu mu. NaN NOBETI: kasten
+     savunmaci degil — config anahtari yine kaybolursa bu false donmeli. */
+  wreckFinite() {
+    let ok = true;
+    this.wrecks.forEach((w) => {
+      if (!(isFinite(w.x) && isFinite(w.y) && isFinite(w.ang))) ok = false;
+    });
+    return ok;
+  }
+  /* Ornek enkaz (ilk aktif): y'nin kare kare ARTTIGI olculur — yani gercekten
+     dusuyor mu. Aktif enkaz yoksa null. */
+  wreckSample() {
+    for (const w of this.wrecks.items) {
+      if (w.active) return { x: w.x, y: w.y, ang: w.ang };
+    }
+    return null;
+  }
+  /* Ambient (jammer) glitch yogunlugu 0..1. */
+  ambientGlitchLevel() { return this._ambientGlitch; }
+  /* Anlik hasar glitch'inin kalan suresi, saniye (sonmusse 0). */
+  damageGlitchT() { return this._glitchT > 0 ? this._glitchT : 0; }
   update(dt) {
     this.explosions.forEach((e) => e.update(dt));
     this.shockwaves.forEach((w) => w.update(dt));
@@ -2030,7 +2584,15 @@ class FxSystem {
     this.scorches.forEach((s) => s.update(dt));
     this.scorePops.forEach((p) => p.update(dt));
     if (this._flakFlash && (this._flakFlash.t += dt) >= this._flakFlash.dur) this._flakFlash = null;
-    if (this._glitchT > 0) this._glitchT -= dt;
+    /* Sayac 0'in ALTINA dusmemeli: eskiden sinirsiz negatife gidiyordu ve
+       _glitchDur eski degerinde kaliyordu; sonraki (daha zayif) glitch dogru
+       genligi alsa da damageT olcumu anlamsiz negatif bir sayi veriyordu.
+       Sonunce dur'u da sifirla — glitch()'in `!this._glitchDur` dali boylece
+       yeni genligi kesin olarak devralir. */
+    if (this._glitchT > 0) {
+      this._glitchT -= dt;
+      if (this._glitchT <= 0) { this._glitchT = 0; this._glitchDur = 0; }
+    }
   }
   draw(c, assets, city) {
     /* Round 17: zemin izi — sehir zemininin UZERINDE, kara hedeflerinin ALTINDA.
@@ -4027,6 +4589,17 @@ class Game {
     this._killingEnemyType = '';      // game over: olduren dusman tipi
     // Menu yumusak gecis (round 9)
     this.menuFadeT = 1;               // 1 = tam gorunur, 0 = gecis ortasinda
+    /* Round 22: yazili ama hic cagrilmamis ozelliklerin oyun tarafi durumu.
+       _wreckSeed: enkaz tohumu icin ADLI LCG akisi — her olumde yeni bir LCG
+       kurulmaz, tek akis ilerler (determinizm: iki kare hizinda ayni enkaz).
+       _hoverOn/_hoverLevel: surekli rotor uguldusunun oyun tarafi niyeti;
+       gercek bayrak sound.hoverOn, bu ikisi yalniz gecis tespiti icin.
+       _jammersKilled: VURULARAK dusurulen jammer sayisi (ekrandan cikan degil). */
+    this._wreckSeed = 9;
+    this._hoverOn = false;
+    this._hoverLevel = 0;
+    this._hoverT = 0;                 // seviye tazeleme sayaci (s)
+    this._jammersKilled = 0;
     this._expose();
   }
   _expose() {
@@ -4128,15 +4701,62 @@ class Game {
         cloudOffset: this.clouds.layerOffset(),
         cloudSprites: this.clouds.spawnedSprites(12),
         bossSprite: this.boss ? this.boss.sprite : '',
-        /* Round 15: jammer — sahnede aktif mi + oyuncu menzilde mi */
+        /* Round 15: jammer — sahnede aktif mi + oyuncu menzilde mi.
+           Round 22: `killed` EKLENDI (mevcut alanlar korundu): jammer artik
+           vurulabiliyor; kapi "aktif/menzilde" yerine gercekten dusuruleni
+           olcer — yoksa dokunulmaz bir dron da yesil yanardi. */
         jammer: (function() {
-          let active = false, inRange = false;
+          let active = false, inRange = false, count = 0;
           this.jammerPool.forEach((j) => {
             if (!j.active) return;
-            active = true;
+            active = true; count++;
             if (j.inRange) inRange = true;
           });
-          return { active, inRange };
+          return { active, inRange, count, killed: this._jammersKilled };
+        }).call(this),
+        /* Round 22: dusen enkaz (FxSystem.spawnWreck) — olculebilir olmali.
+           Okuyucular fx paketinindir; yoksa havuzdan DUSURULMEDEN hesaplanir
+           (eksik okuyucu sessizce "her sey yolunda" dememeli). */
+        fx: (function() {
+          const f = this.fx;
+          const pool = f.wrecks;
+          const wrecks = typeof f.wreckCount === 'function'
+            ? f.wreckCount() : (pool ? pool.count() : 0);
+          let finite;
+          if (typeof f.wreckFinite === 'function') finite = f.wreckFinite();
+          else if (pool) {
+            finite = true;
+            pool.forEach((w) => {
+              if (!(isFinite(w.x) && isFinite(w.y) && isFinite(w.ang))) finite = false;
+            });
+          } else finite = false;
+          let sample = null;
+          if (typeof f.wreckSample === 'function') sample = f.wreckSample();
+          else if (pool) {
+            for (const w of pool.items) {
+              if (w.active) { sample = { x: w.x, y: w.y, ang: w.ang }; break; }
+            }
+          }
+          return { wrecks, wreckFinite: finite, wreckSample: sample };
+        }).call(this),
+        /* Round 22: glitch — ambient (jammer menzili) + anlik hasar glitch'i. */
+        glitch: (function() {
+          const f = this.fx;
+          return {
+            level: typeof f.ambientGlitchLevel === 'function'
+              ? f.ambientGlitchLevel() : (f._ambientGlitch || 0),
+            damageT: typeof f.damageGlitchT === 'function'
+              ? f.damageGlitchT() : Math.max(0, f._glitchT || 0),
+          };
+        }).call(this),
+        /* Round 22: surekli rotor uguldusu. Autotest'te AudioContext ASKIDA
+           kalir ve hicbir ses dugumu kurulmaz — bayrak yine de acilmali,
+           bu yuzden mantiksal bayrak okunur (sound.hoverOn), ses grafigi degil. */
+        sound: (function() {
+          const s = this.sound;
+          const on = (typeof s.hoverOn === 'boolean') ? s.hoverOn
+            : (typeof s.hoverActive === 'function' ? !!s.hoverActive() : this._hoverOn);
+          return { hover: !!on, hoverLevel: this._hoverLevel, muted: s.muted };
         }).call(this),
         /* Round 15: tasici boss — parca canlari + govde kilit durumu.
            Antenden once bodyVulnerable=false (govde hasar almaz). */
@@ -4219,6 +4839,12 @@ class Game {
       killCarrier: () => this.killCarrier(),
       /* Round 15: tasici boss'u bolumden bagimsiz baslat (autotest kancasi). */
       spawnCarrier: () => this.spawnCarrier(),
+      /* Round 22: olu kod kancalari — hepsi NORMAL yollardan gecer (ayri bir
+         "test yolu" yok; yoksa kapi gercekte calismayan bir seyi olcerdi). */
+      killNearestEnemy: () => this.killNearestEnemy(),
+      damagePlayer: () => this.damagePlayer(),
+      spawnJammer: (x, y) => this.spawnJammer(x, y),
+      killNearestJammer: () => this.killNearestJammer(),
       /* Round 16: kara hedefi test kancalari */
       spawnGround: (type, x, screenY) => this.spawnGround(type, x, screenY),
       /* Round 17: skimmer test kancasi — liman disinda false doner. */
@@ -4402,6 +5028,44 @@ class Game {
     /* Round 19: müzik yogunlugunu duruma bagla (audio paketi motoru yazar).
        Zamanlama sim'den BAGIMSIZ: buradan sadece hedef yogunluk verilir. */
     this._syncMusic();
+    /* Round 22: surekli rotor uguldusu — oyun basladiginda acilir, duraklama /
+       oyun sonu / menude kapanir. Durum kontrolu BURADA (play blogunun disinda)
+       yapilir ki her cikis yolu tek yerden kapatilsin. */
+    this._updateHover(dt);
+  }
+  /* Surekli motor sesi (Sound.hover / stopHover). Ses dugumleri yalnizca
+     GECISTE kurulur/yikilir; seviye tazelemesi kademe (hoverStep) ve zaman
+     araligiyla kisilir — kare basina cagri YOK (audio paketinin notu).
+     Seviye oyuncunun hizindan turetilir: durur gibi sukunetli, hizlanirken
+     perde/genlik yukselir. Sim adiminda hesaplanir, performance.now() YOK.   */
+  _updateHover(dt) {
+    const F = CONFIG.FEEDBACK;
+    if (this.state !== 'play') {
+      if (this._hoverOn) {
+        if (typeof this.sound.stopHover === 'function') this.sound.stopHover();
+        this._hoverOn = false;
+        this._hoverLevel = 0;
+        this._hoverT = 0;
+      }
+      return;
+    }
+    const p = this.player;
+    const maxV = p.maxSpeed || CONFIG.PLAYER.maxSpeed;
+    const sp = Math.min(1, Math.sqrt(p.vx * p.vx + p.vy * p.vy) / (maxV || 1));
+    /* Seviye araligi: audio paketi kendi araligini yayinlarsa O gecerlidir
+       (tek kaynak); yoksa game.config'teki yedek kullanilir. */
+    const H = (CONFIG.SOUND && CONFIG.SOUND.hover) || null;
+    const lo = (H && H.levelMin != null) ? H.levelMin : F.hoverMin;
+    const hi = (H && H.levelMax != null) ? H.levelMax : F.hoverMax;
+    const lv = lo + (hi - lo) * sp;
+    this._hoverT += dt;
+    const fresh = !this._hoverOn;
+    if (fresh || (this._hoverT >= 0.2 && Math.abs(lv - this._hoverLevel) >= F.hoverStep)) {
+      if (typeof this.sound.hover === 'function') this.sound.hover(lv);
+      this._hoverOn = true;
+      this._hoverLevel = lv;
+      this._hoverT = 0;
+    }
   }
   /* Hedef yogunlugu: boss uyarisi/aktifken boss, oyun play, menu/duraklama/
      gameover/victory menu seviyesi. Duraklamada muzik DURMAZ — menu seviyesine iner. */
@@ -4589,6 +5253,13 @@ class Game {
     this.clouds.reset();
     this._spawnSeed = 42;
     this._spawnTimer = 0;
+    /* Round 22: enkaz tohumu + jammer sayaci sifirlari (deterministik kosu:
+       ayni girdi ayni enkaz savrulmasini vermeli). Hover bayragi kapali
+       baslar; _updateHover ilk sim adiminda yeniden acar. */
+    this._wreckSeed = 9;
+    this._jammersKilled = 0;
+    if (this._hoverOn && typeof this.sound.stopHover === 'function') this.sound.stopHover();
+    this._hoverOn = false; this._hoverLevel = 0; this._hoverT = 0;
     // bölüm ilerlemesi (round 7)
     this.stageIdx = 0;
     this.killsThisStage = 0;
@@ -5060,6 +5731,11 @@ Object.assign(Game.prototype, {
       const j = this.jammerPool.acquire();
       if (!j) return null;
       j.reset(x, y);
+      /* Round 22: jammer artik vurulabiliyor. Can Jammer sinifinda YOK (units);
+         reset() onu temizlemedigi icin BURADA verilmeli — havuzdan yeniden
+         alinan bir jammer aksi halde olu canla (0) doğar ve tek mermiyle
+         duserdi. Units'e hp/hit() gelince bu satir oraya tasinir.           */
+      if (typeof j.hit !== 'function') j.hp = CONFIG.JAMMER.hp;
       return j;
     }
     const pools = { scout: this.scoutPool, gunner: this.gunnerPool, shield: this.shieldPool,
@@ -5072,6 +5748,29 @@ Object.assign(Game.prototype, {
     const st = CONFIG.STAGES[this.stageIdx];
     e.speed *= st.enemySpeedMul;
     return e;
+  },
+  /* Round 22: jammer test kancasi (autotest). Verilen konumda bir jammer dogurur.
+     DIKKAT — olcum kosulu: Jammer.update kendi y'sini CONFIG.JAMMER.hoverY'ye
+     (240) civiler, yani verilen y giris inisinden sonra gecersizdir (units
+     paketi). Oyuncu H*0.78 = 624'te baslar; 200 px'lik jamming menzili bu iki
+     nokta arasinda ASLA kapanmaz, dolayisiyla girdi verilmeyen bir kosumda
+     inRange hic true olmaz ve ambient glitch olculemezdi. Kanca bu yuzden
+     oyuncuyu menzil icine ceker — gercek oyunda oyuncunun yukari ucarak
+     yaptigi seyin aynisi (y ~ 350 ekran icinde ve serbestce erisilebilir).
+     inRange'i yine Jammer.update hesaplar; hicbir bayrak elle kurulmaz.     */
+  spawnJammer(x, y) {
+    const J = CONFIG.JAMMER;
+    const j = this._spawnEnemy('jammer', x != null ? x : CONFIG.W / 2,
+                                         y != null ? y : -40);
+    if (!j) return null;
+    const near = J.radius * 0.7;
+    const dx = this.player.x - CONFIG.W / 2, dy = this.player.y - J.hoverY;
+    if (dx * dx + dy * dy > near * near) {
+      this.player.x = CONFIG.W / 2;                 // salinim merkezi
+      this.player.y = J.hoverY + J.radius * 0.55;   // 240 + 110 = 350
+      this.player.vx = 0; this.player.vy = 0;
+    }
+    return j;
   },
   _enemiesState() {
     const out = [];
@@ -5320,12 +6019,29 @@ Object.assign(Game.prototype, {
   /* Dusman oldurme (roket/mermi ortak): skor + kota + patlama + powerup.
      Round 18: SKOR KOMBO CARPANIYLA eklenir (once carpanli skor, sonra _onKill
      sayaci besler — Boylece bu oldurma kendi katkisiyla artan carpani GORMEZ). */
+  /* Round 22: enkaz tohumu icin ADLI LCG akisi. Her olumde yeni bir LCG
+     kurulmaz (o zaman ayni konumda olen iki dron ayni sekilde savrulurdu ve
+     akis kare hizina gore kayabilirdi); tek akis sirayla ilerler.
+     Math.random YASAK — determinizm sozlesmesi.                            */
+  _wreckLcg() {
+    this._wreckSeed = (Math.imul(this._wreckSeed, 1664525) + 1013904223) >>> 0;
+    return this._wreckSeed;
+  },
   _onEnemyKilled(e) {
     e.active = false;
     this._addComboScore(e.score);
     this._scorePop(e.x, e.y, e.score);
     this._onKill();
-    this.fx.explode(e.x, e.y);
+    /* Round 22: vurulan dron artik bir pufta yok OLMUYOR — pervanesi kirilip
+       donerek asagi suzuluyor (FallingWreck), omru dolunca patliyor. Olumun
+       aninda okunakli kalmasi icin kucuk bir kivilcim vurusu birakilir.
+       Enkaz havuzu doluysa (12 slot) eski davranisa dusulur: tam patlama —
+       yoksa yogun anlarda olumler sessizce gorunmez olurdu.                */
+    const cnt = typeof this.fx.wreckCount === 'function' ? this.fx.wreckCount() : -1;
+    this.fx.spawnWreck(e.x, e.y, e.sprite, this._wreckLcg());
+    const spawned = cnt < 0 ? true : this.fx.wreckCount() > cnt;
+    if (spawned) this.fx.hit(e.x, e.y);
+    else this.fx.explode(e.x, e.y);
     this._maybeDropPowerup(e.x, e.y);
     this.sound.enemyDeath();
     this.hitstopT = Math.max(this.hitstopT, CONFIG.HITSTOP.enemyMs / 1000);
@@ -5434,6 +6150,24 @@ Object.assign(Game.prototype, {
         });
         if (kHit) return;
       }
+      /* Round 22: JAMMER — havuz taramasinda hic yoktu, yani dron olumsuzdu.
+         Oyuncu mermisi artik hasar verir; can bitince normal olum yolundan
+         (skor + kota + kombo + enkaz) duser.                                */
+      {
+        let jHit = false;
+        this.jammerPool.forEach((j) => {
+          if (jHit || !j.active) return;
+          const r = this._jammerHitR(j) + BR;
+          const dx = b.x - j.x, dy = b.y - j.y;
+          if (dx * dx + dy * dy <= r * r) {
+            b.active = false;
+            this._stats.hits++;   // Round 20: isabet sayaci
+            jHit = true;
+            this._hitJammer(j, b.x, b.y);
+          }
+        });
+        if (jHit) return;
+      }
       /* Round 12: alti tipin hepsi (scout/gunner/shield/bomber/kamikaze/sniper) */
       for (const pool of [this.scoutPool, this.gunnerPool, this.shieldPool,
                           this.bomberPool, this.kamikazePool, this.sniperPool]) {
@@ -5475,32 +6209,122 @@ Object.assign(Game.prototype, {
           this.fx.hit(b.x, b.y);
           return;
         }
-        if (this.player.takeHit()) {
-          /* Round 18: oyuncu hasar alinca kombo ANINDA sifirlanir. */
-          this.comboCount = 0; this.comboT = 0;
-          /* Round 12: silah seviyesi DOGRUDAN 1'e dustur (kademeli degil) +
-             roket suresi sifirlanir + HUD'da SİLAH 1 yanip soner. */
-          this.weaponLevel = 1;
-          this.rocketT = 0;
-          this.weaponFlashT = CONFIG.WEAPON.resetFlashMs / 1000;
-          /* Round 13: bir sub-dron kaybedilir (gövde hasarıyla birlikte). */
-          if (this.subDrones > 0) this.subDrones--;
-          // Sarsinti: oyuncu hasar alinca 260 ms
-          this.shakeT = CONFIG.SHAKE.playerHitMs / 1000;
-          this.shakeDur = this.shakeT;
-          this.shakeAmp = CONFIG.SHAKE.playerAmp;
-          this.sound.hit();
-          if (this.player.lives <= 0) {
-            this._killingEnemyType = 'düşman mermisi';
-            this._newRecord = this.score > this.bestScore;
-            this.bestScore = Math.max(this.bestScore, this.score);
-            this._savePersist();   // Round 20: kalici rekor (try/catch icinde)
-            this.menuFadeT = 0;   // yumusak gecis
-            this.state = 'gameover';
-          }
-        }
+        this._damagePlayer('düşman mermisi');
       }
     });
+  },
+  /* Round 22: oyuncu hasarinin TEK yolu. Once bu blok yalnizca dusman mermisi
+     carpismasinin icinde gomuluydu; disaridan (test kancasi, baska bir hasar
+     kaynagi) ayni sonuclari uretmenin yolu yoktu. Sinyal bozulmasi (glitch)
+     de burada tetiklenir — sarsinti + ses vardi ama glitch hic cagrilmiyordu.
+     Donus: gercekten hasar alindi mi (dokunulmazlik/dash sirasinda false).  */
+  _damagePlayer(cause) {
+    if (!this.player.takeHit()) return false;
+    /* Round 18: oyuncu hasar alinca kombo ANINDA sifirlanir. */
+    this.comboCount = 0; this.comboT = 0;
+    /* Round 12: silah seviyesi DOGRUDAN 1'e dustur (kademeli degil) +
+       roket suresi sifirlanir + HUD'da SİLAH 1 yanip soner. */
+    this.weaponLevel = 1;
+    this.rocketT = 0;
+    this.weaponFlashT = CONFIG.WEAPON.resetFlashMs / 1000;
+    /* Round 13: bir sub-dron kaybedilir (gövde hasarıyla birlikte). */
+    if (this.subDrones > 0) this.subDrones--;
+    // Sarsinti: oyuncu hasar alinca 260 ms
+    this.shakeT = CONFIG.SHAKE.playerHitMs / 1000;
+    this.shakeDur = this.shakeT;
+    this.shakeAmp = CONFIG.SHAKE.playerAmp;
+    /* Round 22: sinyal bozulmasi — kamera sarsintisi FIZIKSEL darbeyi anlatir,
+       glitch YAYINDA olan bozulmayi. Ambient (jammer) glitch'ten daha guclu ve
+       uzun; FxSystem ikisini toplayip glitchMaxCap'te kirpar. Yalniz cizim. */
+    this.fx.glitch(CONFIG.FEEDBACK.damageGlitchMs, CONFIG.FEEDBACK.damageGlitchAmp);
+    this.sound.hit();
+    if (this.player.lives <= 0) {
+      /* Round 20: bitis TEK yoldan (_gameOver) — rekor orada kalicilasir. */
+      this._gameOver(cause || 'düşman');
+    }
+    return true;
+  },
+  /* ----------------------------------------------- Round 22: jammer hasari */
+  /* Jammer'in govde yaricapi. CONFIG.JAMMER.radius jamming MENZILIDIR (200 px),
+     hitbox degil — onunla carpisma yazilsa ekranin dortte birine dokunan mermi
+     jammer'i vururdu. Units'e hitbox/hp gelirse buradaki yedek dusurulmeli. */
+  _jammerHitR(j) {
+    if (j && typeof j.hitR === 'function') return j.hitR();
+    return CONFIG.FEEDBACK.jammerHitR;
+  },
+  /* Bir mermilik hasar. Jammer sinifinda (units) hp/hit() YOK; can burada,
+     CONFIG.JAMMER.hp'den (core, 4) tembel olarak baslatilir. Units'e hit()
+     eklenince bu dal kendiliginden ona devreder (reports/requests/game.md). */
+  _hitJammer(j, x, y) {
+    let killed;
+    if (typeof j.hit === 'function') {
+      killed = j.hit(1);
+    } else {
+      if (typeof j.hp !== 'number') j.hp = CONFIG.JAMMER.hp;
+      j.hp--;
+      killed = j.hp <= 0;
+    }
+    if (killed) { this._onJammerKilled(j); return true; }
+    /* Beyaz tint parlamasi YOK: Jammer.draw hitFlash okumuyor (units). Okumayan
+       bir alani doldurmak tam da bu turun temizledigi olu yazim olurdu. */
+    this.fx.hit(x != null ? x : j.x, y != null ? y : j.y);
+    this.sound.hit();
+    return false;
+  },
+  /* Jammer olumu: hava dusmani — kotaya SAYILIR, komboyu besler, enkaz birakir.
+     `_jammersKilled` YALNIZCA burada artar: ekrandan cikip devre disi kalan
+     jammer dusurulmus sayilmaz, yoksa kapi olumsuz bir dronu yesil gosterirdi. */
+  _onJammerKilled(j) {
+    j.active = false;
+    this._jammersKilled++;
+    const score = CONFIG.JAMMER.score;
+    this._addComboScore(score);
+    this._scorePop(j.x, j.y, score);
+    this._onKill();
+    const cnt = typeof this.fx.wreckCount === 'function' ? this.fx.wreckCount() : -1;
+    this.fx.spawnWreck(j.x, j.y, 'drone_jammer', this._wreckLcg());
+    const spawned = cnt < 0 ? true : this.fx.wreckCount() > cnt;
+    if (spawned) this.fx.hit(j.x, j.y);
+    else this.fx.explode(j.x, j.y);
+    this._maybeDropPowerup(j.x, j.y);
+    this.sound.enemyDeath();
+    this.hitstopT = Math.max(this.hitstopT, CONFIG.HITSTOP.enemyMs / 1000);
+    /* Menzildeki jammer dustu: ambient glitch bir sonraki sim adiminda
+       _updateJammerFx tarafindan zaten kapatilir — burada elle sifirlanmaz. */
+  },
+  /* ------------------------------------------- Round 22: autotest kancalari */
+  /* Hepsi NORMAL yollardan gecer: kanca kendi olum/hasar kodunu yazmaz.     */
+  /* En yakin aktif dusmani (alti hava tipi) oldurur. Canini bitirmek icin
+     e.hit() tekrar tekrar cagrilir — kalkanli dron da boylece duser.        */
+  killNearestEnemy() {
+    let best = null, bestD = Infinity;
+    for (const pool of [this.scoutPool, this.gunnerPool, this.shieldPool,
+                        this.bomberPool, this.kamikazePool, this.sniperPool]) {
+      pool.forEach((e) => {
+        const dx = e.x - this.player.x, dy = e.y - this.player.y;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = e; }
+      });
+    }
+    if (!best) return false;
+    for (let i = 0; i < 64; i++) {
+      if (best.hit()) { this._onEnemyKilled(best); return true; }
+    }
+    return false;
+  },
+  /* Oyuncuya bir hasar uygular (normal hasar yolu). Dokunulmazlik/dash
+     sirasinda false doner — kanca bunu DELMEZ, gercek oyundaki kural gecerli. */
+  damagePlayer() { return this._damagePlayer('düşman'); },
+  /* En yakin jammer'a bir mermilik hasar uygular. */
+  killNearestJammer() {
+    let best = null, bestD = Infinity;
+    this.jammerPool.forEach((j) => {
+      const dx = j.x - this.player.x, dy = j.y - this.player.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = j; }
+    });
+    if (!best) return false;
+    return this._hitJammer(best, best.x, best.y);
   },
 });
 

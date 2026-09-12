@@ -38,7 +38,16 @@ const CONFIG = {
   SCROLL: { speed: 120 },         // zemin dikey kayma px/s
   PARALLAX: {
     cityShift: 30,                // oyuncu x (-1..1) -> karo yatay kayma (px)
-    tileZoom: 1.10,               // karo ekrandan buyuk cizilir ki kayarken kenar acilmasin
+    /* Karo ekrandan buyuk cizilir ki kayarken kenar acilmasin. Pay her iki yanda
+       (W*tileZoom - W)/2. 1.10'da bu 24 px'ti ve maksimum kayma da tam 24 px --
+       artan pay SIFIRDI, yani sag kenara dayanip sarsinti almak karonun kenarini
+       ekrana sokuyor ve altindan SIYAH gorunuyordu (olculdu 2026-09-12).
+       1.18 -> pay 43.2 px; kayma 24 + en buyuk sarsinti 14 = 38, artan +5.2 px.
+       DIKKAT: bunu degistirmek gorunur dikis satirini (H/tileZoom) kaydirir --
+       karolarin ton harmanlamasi o satirda yapilir, tools/blend_tiles.py ile
+       TEMIZ TABANDAN yeniden calistirilmali. tools/tile_seam_check.py ikisini de
+       olcer. */
+    tileZoom: 1.18,
     buildingShift: 38,            // oyuncu x (-1..1) -> bina katmani kayma (px)
     leanMaxDeg: 2,                // hizli yana giderken sahne egimi (derece, yalniz cizim)
     smooth: 8,                    // soneum hizi (1/s) — kritik sonumlu yaklasim

@@ -18,6 +18,7 @@ ornegi genis farkla geciren yerde duruyor.
 """
 import json
 import pathlib
+import re
 import statistics
 import sys
 
@@ -26,7 +27,19 @@ from PIL import Image
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
 MAX_RATIO = 1.0
-ZOOM = 1.10   # CONFIG.PARALLAX.tileZoom
+
+
+
+def config_value(path, default=None):
+    """CONFIG.js'ten tek bir sayiyi okur. Tek kaynak: src/core/CONFIG.js.
+    Araclarin kendi kopyasini tutmasi, tam da bu projede bedeli odenmis hata."""
+    src = (ROOT / "src" / "core" / "CONFIG.js").read_text()
+    key = path.split(".")[-1]
+    m = re.search(rf"\b{key}\s*:\s*([0-9.]+)", src)
+    return float(m.group(1)) if m else default
+
+
+ZOOM = config_value("PARALLAX.tileZoom", 1.10)
 
 
 def row_mean(im, y):
@@ -52,6 +65,77 @@ def measure(a_path, b_path):
     return p95, ab, ba, worst, (worst / p95 if p95 else float("inf"))
 
 
+
+
+def check_black_borders():
+    """Karonun kenarinda siyah sutun var mi?
+
+    Bir karo hazirlanirken kaynaktan GENIS kirpilirsa (orn. 752 px'lik bir
+    goruntuden 806 px istemek) PIL disariyi siyahla doldurur ve karonun iki
+    yanina bant gomulur. Bu, oyunda kayan ekranin kenarinda siyah serit olarak
+    gorunur ve karo geometrisi DOGRUYKEN bile olur -- bu yuzden kenar payi
+    hesabi bunu yakalamaz. Olculdu 2026-09-12: uretilen istanbul karolarinda
+    her yanda 32 sutun.
+    """
+    # Dosya sistemine degil MANIFEST'e bak: assets/ icinde oyunun hic yuklemedigi
+    # artik karolar var (city_dusk, city_neon manifest'te kayitli degil) ve
+    # cizilmeyen bir karoyu kirmizi yakmak kapiyi gurultuye bogar.
+    manifest = json.loads((ASSETS / "manifest.json").read_text())
+    files = [ASSETS / e["file"] for e in manifest["sprites"]
+             if e["name"].startswith("city_")]
+    bad = []
+    for f in sorted(files):
+        im = Image.open(f).convert("L")
+        w, h = im.size
+        def dark(x):
+            return statistics.mean(im.crop((x, 0, x + 1, h)).get_flattened_data()) < 8
+        left = sum(1 for x in range(60) if dark(x))
+        right = sum(1 for x in range(60) if dark(w - 1 - x))
+        if left or right:
+            bad.append((pathlib.Path(f).name, left, right))
+
+    print()
+    if bad:
+        print("TILE_BORDER: FAIL — karo kenarinda siyah sutun")
+        for n, l, r in bad:
+            print(f"  {n:22s} sol={l} sag={r}")
+        return False
+    print("TILE_BORDER: PASS — hicbir karoda siyah kenar yok")
+    return True
+
+
+def check_shift_margin():
+    """Karo kaydirildiginda kenardan siyah gorunuyor mu?
+
+    Karo ekrandan `tileZoom` kadar buyuk cizilir; her iki yanda `padX` kadar pay
+    kalir. Oyuncunun yatay konumu karoyu `cityShift` kadar kaydirir ve sarsinti
+    ustune biraz daha ekler. padX bu ikisinin toplamini karsilamazsa karonun
+    kenari ekranin icine girer ve altindan SIYAH gorunur.
+
+    Olculdu (2026-09-12): tileZoom=1.10 ile pay 24.0 px, maksimum kayma da tam
+    24.0 px -- artan pay SIFIR. Yani sag kenara dayanip hasar almak yetiyordu.
+    """
+    W = config_value("W", 480.0)
+    half = config_value("half", 48.0)
+    zoom = config_value("PARALLAX.tileZoom", 1.10)
+    shift = config_value("PARALLAX.cityShift", 30.0)
+    shake = max(config_value("playerAmp", 8.0), config_value("bossAmp", 14.0))
+
+    pad = (W * zoom - W) / 2.0
+    max_norm = (W - half - W / 2.0) / (W / 2.0)     # oyuncu kenara dayanik
+    need = max_norm * shift + shake
+    margin = pad - need
+
+    print()
+    print(f"{'kaydirma payi':24s}: padX={pad:.1f} px")
+    print(f"{'gereken':24s}: kayma {max_norm * shift:.1f} + sarsinti {shake:.1f} = {need:.1f} px")
+    print(f"{'artan pay':24s}: {margin:+.1f} px")
+    ok = margin > 0
+    print(f"TILE_EDGE: {'PASS' if ok else 'FAIL'} — "
+          + ("kenar acilmiyor" if ok else "kenardan SIYAH gorunur"))
+    return ok
+
+
 def main():
     manifest = json.loads((ASSETS / "manifest.json").read_text())
     names = {s["name"] for s in manifest["sprites"]}
@@ -74,11 +158,16 @@ def main():
             failures += 1
         print(f"{c:10s} {p95:12.2f} {ab:7.2f} {ba:7.2f} {ratio:6.2f}x  {'PASS' if ok else 'FAIL'}")
 
+    if not check_black_borders():
+        failures += 1
+    if not check_shift_margin():
+        failures += 1
+
     print()
     if failures:
-        print(f"TILE_SEAM: FAIL — {failures}/{len(cities)} cift dikisli (esik {MAX_RATIO}x)")
+        print(f"SONUC: FAIL — {failures} sorun")
         return 1
-    print(f"TILE_SEAM: PASS — {len(cities)}/{len(cities)} cift dikissiz")
+    print(f"SONUC: PASS — {len(cities)} cift dikissiz, kenar acilmiyor")
     return 0
 
 

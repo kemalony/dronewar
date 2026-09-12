@@ -79,6 +79,33 @@ class FxSystem {
     this._ambientGlitch = Math.max(0, Math.min(1, level || 0));
   }
   get glitchActive() { return this._glitchT > 0 || this._ambientGlitch > 0; }
+  /* ---------------------------------------------------------------- olcum
+     Round 22: bu iki ozellik (dusen hurda + glitch) yazilmisti ama hicbir
+     kapi onlari goremiyordu; enkaz NaN koordinata ucsa bile ekranda ayirt
+     edilemiyordu. Asagidakiler game paketinin state() kancasiyla disari
+     verecegi duz okuyuculardir. YALNIZ OKUR — sim'e de cizime de dokunmaz. */
+  wreckCount() { return this.wrecks.count(); }
+  /* Tum aktif enkazin x/y/ang degerleri sonlu mu. NaN NOBETI: kasten
+     savunmaci degil — config anahtari yine kaybolursa bu false donmeli. */
+  wreckFinite() {
+    let ok = true;
+    this.wrecks.forEach((w) => {
+      if (!(isFinite(w.x) && isFinite(w.y) && isFinite(w.ang))) ok = false;
+    });
+    return ok;
+  }
+  /* Ornek enkaz (ilk aktif): y'nin kare kare ARTTIGI olculur — yani gercekten
+     dusuyor mu. Aktif enkaz yoksa null. */
+  wreckSample() {
+    for (const w of this.wrecks.items) {
+      if (w.active) return { x: w.x, y: w.y, ang: w.ang };
+    }
+    return null;
+  }
+  /* Ambient (jammer) glitch yogunlugu 0..1. */
+  ambientGlitchLevel() { return this._ambientGlitch; }
+  /* Anlik hasar glitch'inin kalan suresi, saniye (sonmusse 0). */
+  damageGlitchT() { return this._glitchT > 0 ? this._glitchT : 0; }
   update(dt) {
     this.explosions.forEach((e) => e.update(dt));
     this.shockwaves.forEach((w) => w.update(dt));
@@ -88,7 +115,15 @@ class FxSystem {
     this.scorches.forEach((s) => s.update(dt));
     this.scorePops.forEach((p) => p.update(dt));
     if (this._flakFlash && (this._flakFlash.t += dt) >= this._flakFlash.dur) this._flakFlash = null;
-    if (this._glitchT > 0) this._glitchT -= dt;
+    /* Sayac 0'in ALTINA dusmemeli: eskiden sinirsiz negatife gidiyordu ve
+       _glitchDur eski degerinde kaliyordu; sonraki (daha zayif) glitch dogru
+       genligi alsa da damageT olcumu anlamsiz negatif bir sayi veriyordu.
+       Sonunce dur'u da sifirla — glitch()'in `!this._glitchDur` dali boylece
+       yeni genligi kesin olarak devralir. */
+    if (this._glitchT > 0) {
+      this._glitchT -= dt;
+      if (this._glitchT <= 0) { this._glitchT = 0; this._glitchDur = 0; }
+    }
   }
   draw(c, assets, city) {
     /* Round 17: zemin izi — sehir zemininin UZERINDE, kara hedeflerinin ALTINDA.

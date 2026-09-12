@@ -12,6 +12,18 @@ CONFIG.FX.wreck = {
   gravity: 380,        // px/s^2
   spinMax: 3,          // rad/s (isaret ve buyukluk LCG'den)
   driftMax: 90,        // px/s yatay savrulma
+  /* Round 22 — EKSIK UC ANAHTAR. FallingWreck bunlari okuyordu ama tanimli
+     degillerdi: `vy = undefined` -> `vy += gravity*dt` -> NaN, yani enkaz ilk
+     karede imkansiz bir koordinata ucuyordu; `while (acc >= undefined)` hep
+     false oldugu icin duman izi hic dogmuyordu. Ozellik bu yuzden yazili ama
+     hic calismamis durumdaydi.                                              */
+  startVy: 60,         // px/s baslangic asagi itki. Yercekimi tek basina
+                       // 1200 ms'de 0.5*380*1.2^2 = 274 px dusurur; 60'lik
+                       // itki ile ~346 px — 800 px'lik ekranda enkaz omru
+                       // dolmadan alt kenardan cikmaz, "suzuluyor" okunur.
+  smokeEvery: 0.09,    // s — duman parcacigi araligi (~13 parcacik / enkaz)
+  smokeLife: 0.7,      // s — parcacik omru; 0.09 ile ayni anda ~8 canli
+                       // parcacik, yani incelen kisa bir kuyruk (havuz 48).
 };
 /* Glitch tavani: anlik hasar glitch'i + ambient seviye toplanirken asilamasi
    gereken maksimum genlik. Hasar glitch'i tek basina tam genligini (1) korur;

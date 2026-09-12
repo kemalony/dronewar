@@ -12,12 +12,29 @@ Object.assign(Game.prototype, {
   /* Dusman oldurme (roket/mermi ortak): skor + kota + patlama + powerup.
      Round 18: SKOR KOMBO CARPANIYLA eklenir (once carpanli skor, sonra _onKill
      sayaci besler — Boylece bu oldurma kendi katkisiyla artan carpani GORMEZ). */
+  /* Round 22: enkaz tohumu icin ADLI LCG akisi. Her olumde yeni bir LCG
+     kurulmaz (o zaman ayni konumda olen iki dron ayni sekilde savrulurdu ve
+     akis kare hizina gore kayabilirdi); tek akis sirayla ilerler.
+     Math.random YASAK — determinizm sozlesmesi.                            */
+  _wreckLcg() {
+    this._wreckSeed = (Math.imul(this._wreckSeed, 1664525) + 1013904223) >>> 0;
+    return this._wreckSeed;
+  },
   _onEnemyKilled(e) {
     e.active = false;
     this._addComboScore(e.score);
     this._scorePop(e.x, e.y, e.score);
     this._onKill();
-    this.fx.explode(e.x, e.y);
+    /* Round 22: vurulan dron artik bir pufta yok OLMUYOR — pervanesi kirilip
+       donerek asagi suzuluyor (FallingWreck), omru dolunca patliyor. Olumun
+       aninda okunakli kalmasi icin kucuk bir kivilcim vurusu birakilir.
+       Enkaz havuzu doluysa (12 slot) eski davranisa dusulur: tam patlama —
+       yoksa yogun anlarda olumler sessizce gorunmez olurdu.                */
+    const cnt = typeof this.fx.wreckCount === 'function' ? this.fx.wreckCount() : -1;
+    this.fx.spawnWreck(e.x, e.y, e.sprite, this._wreckLcg());
+    const spawned = cnt < 0 ? true : this.fx.wreckCount() > cnt;
+    if (spawned) this.fx.hit(e.x, e.y);
+    else this.fx.explode(e.x, e.y);
     this._maybeDropPowerup(e.x, e.y);
     this.sound.enemyDeath();
     this.hitstopT = Math.max(this.hitstopT, CONFIG.HITSTOP.enemyMs / 1000);
@@ -126,6 +143,24 @@ Object.assign(Game.prototype, {
         });
         if (kHit) return;
       }
+      /* Round 22: JAMMER — havuz taramasinda hic yoktu, yani dron olumsuzdu.
+         Oyuncu mermisi artik hasar verir; can bitince normal olum yolundan
+         (skor + kota + kombo + enkaz) duser.                                */
+      {
+        let jHit = false;
+        this.jammerPool.forEach((j) => {
+          if (jHit || !j.active) return;
+          const r = this._jammerHitR(j) + BR;
+          const dx = b.x - j.x, dy = b.y - j.y;
+          if (dx * dx + dy * dy <= r * r) {
+            b.active = false;
+            this._stats.hits++;   // Round 20: isabet sayaci
+            jHit = true;
+            this._hitJammer(j, b.x, b.y);
+          }
+        });
+        if (jHit) return;
+      }
       /* Round 12: alti tipin hepsi (scout/gunner/shield/bomber/kamikaze/sniper) */
       for (const pool of [this.scoutPool, this.gunnerPool, this.shieldPool,
                           this.bomberPool, this.kamikazePool, this.sniperPool]) {
@@ -167,31 +202,121 @@ Object.assign(Game.prototype, {
           this.fx.hit(b.x, b.y);
           return;
         }
-        if (this.player.takeHit()) {
-          /* Round 18: oyuncu hasar alinca kombo ANINDA sifirlanir. */
-          this.comboCount = 0; this.comboT = 0;
-          /* Round 12: silah seviyesi DOGRUDAN 1'e dustur (kademeli degil) +
-             roket suresi sifirlanir + HUD'da SİLAH 1 yanip soner. */
-          this.weaponLevel = 1;
-          this.rocketT = 0;
-          this.weaponFlashT = CONFIG.WEAPON.resetFlashMs / 1000;
-          /* Round 13: bir sub-dron kaybedilir (gövde hasarıyla birlikte). */
-          if (this.subDrones > 0) this.subDrones--;
-          // Sarsinti: oyuncu hasar alinca 260 ms
-          this.shakeT = CONFIG.SHAKE.playerHitMs / 1000;
-          this.shakeDur = this.shakeT;
-          this.shakeAmp = CONFIG.SHAKE.playerAmp;
-          this.sound.hit();
-          if (this.player.lives <= 0) {
-            this._killingEnemyType = 'düşman mermisi';
-            this._newRecord = this.score > this.bestScore;
-            this.bestScore = Math.max(this.bestScore, this.score);
-            this._savePersist();   // Round 20: kalici rekor (try/catch icinde)
-            this.menuFadeT = 0;   // yumusak gecis
-            this.state = 'gameover';
-          }
-        }
+        this._damagePlayer('düşman mermisi');
       }
     });
+  },
+  /* Round 22: oyuncu hasarinin TEK yolu. Once bu blok yalnizca dusman mermisi
+     carpismasinin icinde gomuluydu; disaridan (test kancasi, baska bir hasar
+     kaynagi) ayni sonuclari uretmenin yolu yoktu. Sinyal bozulmasi (glitch)
+     de burada tetiklenir — sarsinti + ses vardi ama glitch hic cagrilmiyordu.
+     Donus: gercekten hasar alindi mi (dokunulmazlik/dash sirasinda false).  */
+  _damagePlayer(cause) {
+    if (!this.player.takeHit()) return false;
+    /* Round 18: oyuncu hasar alinca kombo ANINDA sifirlanir. */
+    this.comboCount = 0; this.comboT = 0;
+    /* Round 12: silah seviyesi DOGRUDAN 1'e dustur (kademeli degil) +
+       roket suresi sifirlanir + HUD'da SİLAH 1 yanip soner. */
+    this.weaponLevel = 1;
+    this.rocketT = 0;
+    this.weaponFlashT = CONFIG.WEAPON.resetFlashMs / 1000;
+    /* Round 13: bir sub-dron kaybedilir (gövde hasarıyla birlikte). */
+    if (this.subDrones > 0) this.subDrones--;
+    // Sarsinti: oyuncu hasar alinca 260 ms
+    this.shakeT = CONFIG.SHAKE.playerHitMs / 1000;
+    this.shakeDur = this.shakeT;
+    this.shakeAmp = CONFIG.SHAKE.playerAmp;
+    /* Round 22: sinyal bozulmasi — kamera sarsintisi FIZIKSEL darbeyi anlatir,
+       glitch YAYINDA olan bozulmayi. Ambient (jammer) glitch'ten daha guclu ve
+       uzun; FxSystem ikisini toplayip glitchMaxCap'te kirpar. Yalniz cizim. */
+    this.fx.glitch(CONFIG.FEEDBACK.damageGlitchMs, CONFIG.FEEDBACK.damageGlitchAmp);
+    this.sound.hit();
+    if (this.player.lives <= 0) {
+      /* Round 20: bitis TEK yoldan (_gameOver) — rekor orada kalicilasir. */
+      this._gameOver(cause || 'düşman');
+    }
+    return true;
+  },
+  /* ----------------------------------------------- Round 22: jammer hasari */
+  /* Jammer'in govde yaricapi. CONFIG.JAMMER.radius jamming MENZILIDIR (200 px),
+     hitbox degil — onunla carpisma yazilsa ekranin dortte birine dokunan mermi
+     jammer'i vururdu. Units'e hitbox/hp gelirse buradaki yedek dusurulmeli. */
+  _jammerHitR(j) {
+    if (j && typeof j.hitR === 'function') return j.hitR();
+    return CONFIG.FEEDBACK.jammerHitR;
+  },
+  /* Bir mermilik hasar. Jammer sinifinda (units) hp/hit() YOK; can burada,
+     CONFIG.JAMMER.hp'den (core, 4) tembel olarak baslatilir. Units'e hit()
+     eklenince bu dal kendiliginden ona devreder (reports/requests/game.md). */
+  _hitJammer(j, x, y) {
+    let killed;
+    if (typeof j.hit === 'function') {
+      killed = j.hit(1);
+    } else {
+      if (typeof j.hp !== 'number') j.hp = CONFIG.JAMMER.hp;
+      j.hp--;
+      killed = j.hp <= 0;
+    }
+    if (killed) { this._onJammerKilled(j); return true; }
+    /* Beyaz tint parlamasi YOK: Jammer.draw hitFlash okumuyor (units). Okumayan
+       bir alani doldurmak tam da bu turun temizledigi olu yazim olurdu. */
+    this.fx.hit(x != null ? x : j.x, y != null ? y : j.y);
+    this.sound.hit();
+    return false;
+  },
+  /* Jammer olumu: hava dusmani — kotaya SAYILIR, komboyu besler, enkaz birakir.
+     `_jammersKilled` YALNIZCA burada artar: ekrandan cikip devre disi kalan
+     jammer dusurulmus sayilmaz, yoksa kapi olumsuz bir dronu yesil gosterirdi. */
+  _onJammerKilled(j) {
+    j.active = false;
+    this._jammersKilled++;
+    const score = CONFIG.JAMMER.score;
+    this._addComboScore(score);
+    this._scorePop(j.x, j.y, score);
+    this._onKill();
+    const cnt = typeof this.fx.wreckCount === 'function' ? this.fx.wreckCount() : -1;
+    this.fx.spawnWreck(j.x, j.y, 'drone_jammer', this._wreckLcg());
+    const spawned = cnt < 0 ? true : this.fx.wreckCount() > cnt;
+    if (spawned) this.fx.hit(j.x, j.y);
+    else this.fx.explode(j.x, j.y);
+    this._maybeDropPowerup(j.x, j.y);
+    this.sound.enemyDeath();
+    this.hitstopT = Math.max(this.hitstopT, CONFIG.HITSTOP.enemyMs / 1000);
+    /* Menzildeki jammer dustu: ambient glitch bir sonraki sim adiminda
+       _updateJammerFx tarafindan zaten kapatilir — burada elle sifirlanmaz. */
+  },
+  /* ------------------------------------------- Round 22: autotest kancalari */
+  /* Hepsi NORMAL yollardan gecer: kanca kendi olum/hasar kodunu yazmaz.     */
+  /* En yakin aktif dusmani (alti hava tipi) oldurur. Canini bitirmek icin
+     e.hit() tekrar tekrar cagrilir — kalkanli dron da boylece duser.        */
+  killNearestEnemy() {
+    let best = null, bestD = Infinity;
+    for (const pool of [this.scoutPool, this.gunnerPool, this.shieldPool,
+                        this.bomberPool, this.kamikazePool, this.sniperPool]) {
+      pool.forEach((e) => {
+        const dx = e.x - this.player.x, dy = e.y - this.player.y;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = e; }
+      });
+    }
+    if (!best) return false;
+    for (let i = 0; i < 64; i++) {
+      if (best.hit()) { this._onEnemyKilled(best); return true; }
+    }
+    return false;
+  },
+  /* Oyuncuya bir hasar uygular (normal hasar yolu). Dokunulmazlik/dash
+     sirasinda false doner — kanca bunu DELMEZ, gercek oyundaki kural gecerli. */
+  damagePlayer() { return this._damagePlayer('düşman'); },
+  /* En yakin jammer'a bir mermilik hasar uygular. */
+  killNearestJammer() {
+    let best = null, bestD = Infinity;
+    this.jammerPool.forEach((j) => {
+      const dx = j.x - this.player.x, dy = j.y - this.player.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = j; }
+    });
+    if (!best) return false;
+    return this._hitJammer(best, best.x, best.y);
   },
 });

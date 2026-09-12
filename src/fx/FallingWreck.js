@@ -32,7 +32,9 @@ class FallingWreck {
     this.ang += this.av * dt;                        // kirilan pervane: donerek suzulur
     // arkasinda incelen duman izi (parcacik havuzu — gruplu cizim)
     this._smokeAcc += dt;
-    while (this._smokeAcc >= W.smokeEvery) {
+    // smokeEvery > 0 sarti: sabit 0/undefined olursa `while` ya hic donmez
+    // (ozellik sessizce olur — Round 15'te tam bu oldu) ya da sonsuz doner.
+    while (W.smokeEvery > 0 && this._smokeAcc >= W.smokeEvery) {
       this._smokeAcc -= W.smokeEvery;
       const p = fx.smoke.acquire();
       if (!p) break;

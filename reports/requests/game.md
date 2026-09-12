@@ -52,3 +52,27 @@ Hepsi tek satırlık notlar; karar orkestratörün.
   (çizim-only invaryantı). Altın iz bulut durumunu karşılaştırmamalı; `:game`'in
   ayrı tohumlu çizim LCG'si bu yüzden çatallanma değil. Yalnız biri bulut durumuna
   iddia yazmaya kalkarsa gündeme gelsin.
+
+# :game — Round 22 (olu kod cagri noktalari) istekleri
+
+- **`units/Jammer.js`'e `hp` + `hit(n)` gerekiyor.** Jammer artik vurulabiliyor ama
+  sinifin cani yok: can `Game.collide._hitJammer` icinde `CONFIG.JAMMER.hp` (core, 4)
+  ile oyun tarafinda tutuluyor ve `Game.spawn._spawnEnemy` jammer dalinda doguşta
+  veriliyor (`reset()` onu temizlemedigi icin havuzdan yeniden alinan jammer aksi
+  halde 0 canla dogardi). `_hitJammer` `typeof j.hit === 'function'` ise ona devreder
+  — units ekledigi an oyun tarafi dal kendiliginden devre disi kalir.
+- **Jammer govde yaricapi (hitbox) units'te yok.** `CONFIG.JAMMER.radius` jamming
+  MENZILI (200 px), hitbox degil. Gecici deger `CONFIG.FEEDBACK.jammerHitR = 28`
+  (game.config.js). Units `Jammer.hitR()` ekledigi an `_jammerHitR` onu kullanir.
+- **Jammer roketlerin hedefi DEGIL.** `_nearestEnemy` yalnizca Enemy havuzlarini ve
+  kara hedeflerini tariyor; roket carpisma dali `target.type` ve `target.hit()`
+  bekliyor, ikisi de Jammer'da yok — eklenirse `TypeError` olurdu. Jammer'a `hit()`
+  (ve istege bagli `type`) gelince roket hedeflemesine de alinmali.
+- **Jammer menzili girdi olmadan ASLA kapanmiyor (units kararı).** `Jammer.update`
+  y'sini `CONFIG.JAMMER.hoverY` (240) ile civiliyor, oyuncu `CONFIG.H*0.78 = 624`'te
+  basliyor: aradaki 384 px, 200 px'lik menzilin disinda. Yani jammer ambient glitch'i
+  yalnizca oyuncu yukari ucarsa goruluyor. Autotest kancasi `spawnJammer(x, y)` bu
+  yuzden oyuncuyu menzile cekiyor (y ~ 350 — gercek oyunda serbestce erisilebilen
+  bir nokta); `inRange` yine `Jammer.update` tarafindan hesaplaniyor, elle kurulan
+  bayrak YOK. Kalici cozum units'te: jammer oyuncuya dogru alcalsin/izlesin ya da
+  menzil/hoverY yeniden dengelensin.
