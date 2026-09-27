@@ -144,11 +144,11 @@ class ConfigParityTest {
         val perFile = owners.values.groupingBy { it }.eachCount()
         assertEquals(
             mapOf(
-                "src/core/CONFIG.js" to 456,
-                "src/units/units.config.js" to 70,
+                "src/core/CONFIG.js" to 494,
+                "src/units/units.config.js" to 107,
                 "src/audio/audio.config.js" to 178,
-                "src/fx/fx.config.js" to 38,
-                "src/game/game.config.js" to 37,
+                "src/fx/fx.config.js" to 47,
+                "src/game/game.config.js" to 60,
             ),
             perFile,
             "golden ownership split changed; regenerate config/*.toml with " +

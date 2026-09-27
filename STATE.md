@@ -1,6 +1,40 @@
 # DRONE WAR — Durum
 
-## Tur: 26 (tamamlandı — web 69 PASS / 0 FAIL; vision_polish düzeldi)
+## Tur: 27 (tamamlandı — web 69 PASS / 0 FAIL; Android rules+core_sim yeşil, iz değişmedi)
+
+## Tur 27 — cila turu (13 paralel ajan görevi: kod taraması + gemma/mimo vision)
+- **Kod borçları kapandı:** ölü sub-dron kamikaze yolu (çağrı sırası yüzünden asla
+  çalışmıyordu), iki sub-dronun üst üste aynı tarafta çizilmesi (`_subSide`
+  bağlanmadığı için), tankın 4-5. canının HUD'da görünmemesi, `pu_shield`'in
+  drop tablosunda olmaması (%6 eklendi), rotor merkezlerinin yalnız falcon'da
+  tanımlı olması (4 dron + menü önizlemesi), ölü config anahtarları
+  (`SUBDRONE.damage/kamikaze*`, `FX.tracer.haloW/haloA`), HUD'da iki farklı cyan
+  + iki farklı kırmızı + yarım gölge dili (tek `_uiHudText` + `_uiHudPlate`).
+- **Görsel cila:** düşman sprite'larına oyuncu deseninde çarpımsal koyu hale;
+  mermi halesi dikdörtgenden 7 kademeli round-cap kapsüle (gemma'nın "siyah
+  dikdörtgen" bulgusu kapandı, kontrast marji korundu); duman kenarları üç
+  geçişli kademeyle yumuşadı; liman karolarında vinçler %40 koyulaştırıldı
+  (temiz tabandan, seam-check PASS); `cloud_a`/`cloud_d` alfa kenarlarındaki
+  dikdörtgen kesikler (beyaz leke bulgusunun kaynağı) yumuşatıldı; HUD
+  metinlerinin arkasına sızıntısı `(1-alpha)` ile deterministik plaka.
+- **Kapıdaki yarış düzeltildi:** `foreground_contrast` ölçümü sırasında
+  `perf_heavy`'nin rAF döngüsü DURDURULMUYORDU — ekran görüntüsü ile pozisyon
+  okuma arasında 2-6 kare atlıyor, vy=-800 test mermisi 26-80 px kayıyor ve
+  ±6 px tepe penceresi çekirdeği kaçırıyordu. Round 26'da 221, round 27'de
+  aynı çizimle 5/14 ölçtü. `__perfStop` bayrağı eklendi; artık 206+.
+- **Android senkronu:** CONFIG 779→886 anahtar; `:rules` TOML'ları yeniden
+  üretildi, `ConfigParityTest`'in gömülü sahiplik haritası güncellendi.
+  Oyuncu izi DEĞİŞMEDİ (720 adım birebir). `gate_rules` + `gate_core_sim`
+  yeşil. `gate_game` koşulamadı: bu makinede AVD yok.
+- **gate_rules'un kendi probe'u artık temizleniyor:** AC-2b 1-ulp probe'u
+  TOML'u geri yükleyip çıkıyordu; bayt-bayt aynı TOML `generateConfig`'i
+  UP-TO-DATE bırakıyor ve KAYDIRILMIŞ Config.kt diskte kalıyordu — bir
+  sonraki koşum kendi probe'unun eserini gerçek kırmızı sanıyordu. Probe'dan
+  sonra üretilen dizin silinir; kapı iki üst üste koşumda da yeşil.
+- **Vision ikinci model:** `qwen_agent.look(model=...)` parametresi eklendi;
+  `mimo-v2.6-pro` reasoning'li — `max_tokens>=1500` gerekir, aksi halde
+  content=None döner (artık açık hata). mimo gemma'dan katı: aynı kareye 8
+  vs 3+blocking4 verebiliyor. Kapıya bağlanmadı; ikinci görüş için.
 
 ## Tur 26 — vision API değişimi
 - **Tek FAIL'in sebebi erişimdi, oyun değildi:** `qwen_agent.py`'nin vision çağrısı

@@ -62,6 +62,11 @@ if [ -f "$PARITY_VICTIM" ] && grep -q "^PLAYER.maxSpeed = 400.0$" "$PARITY_VICTI
   fi
   cp /tmp/gate_rules_parity.bak "$PARITY_VICTIM"
   rm -f /tmp/gate_rules_parity.bak
+  # Geri yuklenen TOML bayt-bayt ayni oldugu icin generateConfig UP-TO-DATE
+  # doner ve kaydirilmis Config.kt DISKTE KALIRDI — bir sonraki koşumda kapi
+  # kendi probe'unun eserini "gercek kirmizi" sanardi (round 27'de oldu).
+  # Uretilen ciktiyi sil: bir sonraki generateConfig temiz TOML'dan yeniden uretir.
+  rm -rf android/rules/build/generated/config
 else
   fail "PLAYER.maxSpeed anchor not found in $PARITY_VICTIM - cannot falsify parity"
 fi
