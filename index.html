@@ -223,16 +223,28 @@ const CONFIG = {
     speedBoost: 0.30,          // oyuncu hizlandikca %30'a kadar artis
     blurAlpha: 0.15,           // rotor altindaki bulaniklik halkasi (<= 0.18)
     /* Rotor merkezleri sprite geometrisine gore (sprite koordinatlari, merkezden).
-       Oyuncu 4 kose, scout 4, gunner 6, shield 8, boss 2 buyuk halka. */
+       Oyuncu 4 kose, scout 4, gunner 6, shield 8, boss 2 buyuk halka.
+       Oynanis dronlari (round 26, F8): falcon'un dogrulanmis +-30,+-30 merkezleri
+       referans alindi; swift/tank/ghost merkezleri sprite PNG alfa geometrisinden
+       cikarildi (gorunur piksel yumaklari + parlak rotor diskleri, 96-birim
+       cizim tabani — tum dronlar kare cizildigi icin x ekseni 96/genislik ile
+       olceklenir; tank 208 px genisliginde bu nedenle daralir).
+       Cember-cevre gorunurluk orani (falcon referansi 0.24-0.42):
+       swift 0.16-0.25 (ince pervaneler), tank 0.72 (belirgin kanal halkalari),
+       ghost 0.27. Overlay araci ince pervanelerde dusuk oran verir — bilincli. */
     centers: {
       drone_player: [[-30,-30],[30,-30],[-30,30],[30,30]],
+      drone_swift:  [[-39,-21],[39,-21],[-39,21],[39,21],[-21,-40],[21,-40],[-20,39],[20,39]],
+      drone_tank:   [[-34,-33],[34,-33],[-34,33],[34,33]],
+      drone_ghost:  [[-17,-38],[17,-38],[-38,16],[38,16]],
       drone_scout:  [[-18,-18],[18,-18],[-18,18],[18,18]],
       drone_gunner: [[-28,-22],[0,-26],[28,-22],[-28,22],[0,26],[28,22]],
       drone_shield: [[-30,-30],[0,-34],[30,-30],[30,0],[30,30],[0,34],[-30,30],[-30,0]],
       boss_gunship: [[-70,0],[70,0]],
     },
     radii: {
-      drone_player: 22, drone_scout: 15, drone_gunner: 17, drone_shield: 20,
+      drone_player: 22, drone_swift: 10, drone_tank: 12, drone_ghost: 7,
+      drone_scout: 15, drone_gunner: 17, drone_shield: 20,
       boss_gunship: 58,   // buyuk halka -> daha yavas doner
     },
     /* Boss rotorlari (round 11): her boss icin merkezler + IC yaricaplar
@@ -498,14 +510,77 @@ Object.assign(CONFIG.MUSIC, {
  *
  * Neden ayri dosya: src/core/CONFIG.js yalnizca core ajaninindir.
  * build_order.json icinde core/CONFIG.js'ten SONRA siralanir.            */
+/* Dusman halesi (yalnizca cizim): yeşil scout / cyan tonlu tipler parlak
+ * sehir karosu ve liman suyu ustunde ayrismiyordu (mimo denetimi, _gnd_a/shot_2,
+ * oncelik 4). Cozum oyuncunun halesi deseni (Player.js): govdenin altina
+ * carpimsal koyu radyal hale — sim'e dokunmaz, hitbox degismez.
+ *
+ * radiusMul: cizim kutusunun (s = radius*2) kaci kati — sprite'in TASINA
+ * kadar uzanir (oyuncu temas golgesi kurali: tasma olmali).
+ * pos/col: Player.js'teki rgba kademe deseninin config'li hali.
+ * haloLight: Skimmer icin hafifletilmis surum (liman sahnesi, yandan giris).
+ *
+ * Dikkat: `CONFIG.ENEMY = {...}` YAZMA — burada yeni anahtar aciliyor ama
+ * desen olarak Object.assign korunsun; baska paket alan eklerse ezilmez. */
+CONFIG.ENEMY = Object.assign(CONFIG.ENEMY || {}, {
+  halo: {
+    radiusMul: 1.05,       // hale yaricapi = cizim kutusu x 1.05 (tasma var)
+    innerMul: 0.15,        // ic baslangic yaricapi (gradeyanin ic cukuru)
+    pos: [0, 0.45, 0.75, 1],
+    col: ['rgba(3,6,12,0.55)', 'rgba(3,6,12,0.34)',
+          'rgba(3,6,12,0.14)', 'rgba(3,6,12,0)'],
+  },
+  haloLight: {
+    radiusMul: 1.0,
+    innerMul: 0.15,
+    pos: [0, 0.45, 0.75, 1],
+    col: ['rgba(3,6,12,0.40)', 'rgba(3,6,12,0.22)',
+          'rgba(3,6,12,0.09)', 'rgba(3,6,12,0)'],
+  },
+});
+
+/* Mermi kontrast halesinin BICIMI (yalnizca cizim, Bullet.drawPool).
+ *
+ * Round 21'de hale 4 kademeli DIKDORTGEN fillRect'ti; vision denetimi üç
+ * karede tekrarladi: "harmanlanmamis siyah dikdortgen golgeler, kenarlar
+ * cok keskin" (shot_1/shot_3/_contrast, P2-3). Cozum bicim degisikligi:
+ * her kademeyi round-cap cizgi (kapsul) olarak cizmek — ucler yuvarlanir,
+ * yatayda 6 ince kademeli katman kenar bantlanmasini eritir.
+ *
+ * widths: CONFIG.BULLET.w'nin kati (carpisma kutusuna dokunmaz).
+ * alphas: katman basina carpimsal siyah alfa; birikimli tepe karanlik
+ * ~0.83 — eski 4 kademeli desene (~0.81) gore ALTIN DEGIL, ustu.
+ * foreground_contrast kapisinin 60 esigine ayni marjla hizmet eder.
+ *
+ * Dikkat: CONFIG.FX.tracer'a buradan anahtar EKLENMEZ — fx.config.js
+ * build sirasinda bundan sonra calisir ve tracer nesnesini komple
+ * atar. Bu yuzden hale bicimi BULLET altinda, units'e ait anahtarda. */
+Object.assign(CONFIG.BULLET, {
+  halo: {
+    /* Round 28: foreground_contrast iki kosuda FAIL (en zayif 14/6, esik 60).
+     * Round 27'de alfa kademeleri eski 4'lu dikdortgen desenin altina
+     * dustu (0.20-0.34 vs 0.30-0.42) — tepe karanlik ~0.83 kalsa da BANT
+     * KAPSAMI/alfasi dustu, medyan yukseldi. Kapsul bicimi KORUNARAK
+     * (vision "siyah dikdortgen" bulgusu geri gelmesin) dis kademeler
+     * eski seviyeye yaklasti + 7. kademe eklendi:
+     *  - 7.2x bw'te 0.18'lik genis soluk katman: ±30 px bandinin daha
+     *    buyuk oranini kaplar (kapı medyani asagi ceken asil kaldirak),
+     *    tepe karanliga katkisi ufak.
+     *  - Birikimli tepe ~0.89 (hedef aralik 0.85-0.90; eski olculen ~0.81).
+     *  - Yaricap bazinda karanlik: >6.3: 0.18, 5.2-6.3: 0.41,
+     *    4.1-5.2: 0.56, 3.0-4.1: 0.67, 2.0-3.0: 0.75, 1.2-2.0: 0.83,
+     *    cekirdek: 0.89. Eski gecen desenin 4.3-6.3 bandindaki ~0.51'ine
+     *    karsilik 5.2-6.3'te 0.41 + 7.2'lik ek kapsama. */
+    widths: [7.2, 6.3, 5.2, 4.1, 3.0, 2.0, 1.2], // kapsul kademeleri (bw kati)
+    alphas: [0.18, 0.28, 0.26, 0.24, 0.26, 0.30, 0.36], // katman alfalari
+  },
+});
+
 CONFIG.SUBDRONE = Object.assign(CONFIG.SUBDRONE || {}, {
   pool: 2,                // havuz boyutu (2 mini refakatci)
   offset: 34,             // oyuncunun yanindaki mesafe (px)
   followSmooth: 10,       // yumusak gecikme (1/s) — kritik sonumlu yaklasim
   fireIntervalMs: 190,    // namlu modu ates araligi
-  damage: 1,              // namlu modu hasari
-  kamikazeSpeed: 620,     // px/s — kamikaze modunda hiza
-  kamikazeDamage: 6,      // carpisma hasari
   size: 48,               // cizim boyutu (manifest sub_drone 48x48)
 });
 /* Jammer dronu: ateş ETMEZ; ekranda kaldigi surece oyuncuyu zayiflatir.
@@ -608,8 +683,14 @@ Object.assign(CONFIG.SUBDRONE, {
 /* Isisi: dash/roket/subLaunch maliyetleri CONFIG.HEAT.cost'ta (core).
    Drop olasiligi ise game paketinin sorumlulugudur. */
 CONFIG.HEAT.dropChanceSubdrone = CONFIG.SUBDRONE.dropChance;
+/* Round 26 (F3): pu_shield artik gercekten duser. Sure core'da
+   (CONFIG.WEAPON.shieldMs); dusme olasiligi game paketinin sorumlulugunda.
+   YENI ust duzey anahtar (SHIELD) — `|| {}` ile genisletiliyor. */
+CONFIG.SHIELD = Object.assign(CONFIG.SHIELD || {}, {
+  dropChance: 0.06,          // dusman olumunde %6 (LCG) — weapon/rocket'in yani
+});
 /* Round 15: cok asamali tasici boss — govde olum sekansinin sayilari.
-   core/CONFIG.CARRIER'e EZMEZ, genisletir (AGENTS.md kurali). */
+    core/CONFIG.CARRIER'e EZMEZ, genisletir (AGENTS.md kurali). */
 Object.assign(CONFIG.CARRIER, {
   deathExplosions: 8,     // govde olumunde patlama sayisi
   deathWindowMs: 600,     // ...bu sure icinde esit araliklarla
@@ -663,6 +744,11 @@ CONFIG.FEEDBACK = Object.assign(CONFIG.FEEDBACK || {}, {
 CONFIG.UI = Object.assign(CONFIG.UI || {}, {
   plateRGB: '4,7,14',        // levha rengi (gece mavisi-siyah)
   accentRGB: '110,235,255',  // cyan vurgu — oyunun mermi/HUD dili
+  /* Round 26 (F13): tehlike kirmizisi — tek kaynak. Boss can cubugu, isi
+     cubugu ve akraba cizimler buradan okur; '#ff5540' literali dagitilmasin.
+     (units paketindeki Carrier kendi turunda baglanacak — game tarafı burada.) */
+  dangerColor: '#ff5540',
+  dangerRGB: '255,85,64',
   gold: '#ffd24a',
   muted: 'rgba(150,166,184,0.9)',
   plateFeather: 46,          // levhanin ust/alt yumusama payi (px)
@@ -677,6 +763,26 @@ CONFIG.UI = Object.assign(CONFIG.UI || {}, {
   endPlate:   { y0: 160, y1: 580, a: 0.68 },
   pauseDim: 0.50,            // duraklatmada oyun alaninin karartmasi
   tipPlate: { y0: 770, y1: 792, a: 0.55 },   // oyun ici ipucu satiri
+  /* Round 27: OYUN ICi HUD'un kendi levhasi. Menulerdeki _uiPlate tam
+     genisliktir; HUD'da bu YASAK olurdu — oyun alanini karartmak sarsinti/
+     vinyet yasaginin ruhuna aykiri. Bunun yerine HUD metinlerinin ARKASINA
+     KUCUK, koseleri yumusayan bir plaka cekilir (gate_ui.py olcum bandina
+     aynı mantik: yazinin arkasindaki medyan <= 45).
+     Sizinti = (1 - alpha): 0.62 secildi — parlak karo medyani ~53 olsa bile
+     0.38 * 53 + levha (~5) ~ 25'e iner; alfa daha yukari cikarsa ekran
+     karartma hissi baslar. Kenar yumusamasi edgePasses katmanli roundRect
+     ile yapilir (toplam alfa cekirdekte tam olarak alpha). */
+  hudPlate: {
+    x: 6, y: 8,              // sol ust blokun cekirdek sol/ust kenari
+    heatW: 170,              // isi cubugu genisligi (genisligin alt siniri)
+    alpha: 0.62, feather: 16, edgePasses: 5, radius: 10,
+    rows: { skor: 30, silah: 80, kalkan: 100, roket: 120, jammer: 138 },
+  },
+  /* Sag ust kombo rozeti — ayni desen, daha kucuk ve daha soluk. */
+  comboPlate: { y: 6, w: 94, h: 30, alpha: 0.55, feather: 12, edgePasses: 4, radius: 9 },
+  /* HUD ikonlari: 24/16 px cizim 96 px kaynak sprite'i ~4x kucultuyordu;
+     pikselli izlenim buradan. Hafif buyutme + tam sayi hizalama. */
+  hudIconScale: 1.15,
 });
 /* Menude gosterilen bolum katalogu — STAGES'ten TURETILIR ki bolum eklenince
    kendiliginden guncellensin (elle yazilan liste bir kez bayatladi). */
@@ -740,6 +846,47 @@ Object.assign(CONFIG.FX, {
     fontSize: 15,    // bold monospace punto
   },
 });
+/* Round 24 (F12): efekt siniflarindan tasinan gorsel sabitler — degerler
+   degismedi, yalnizca yerleri config'e tasindi. */
+Object.assign(CONFIG.FX, {
+  smoke: {
+    size: 5,             // parcacik boyutu (deterministik)
+    vy: -18,             // hafif yukari suruklenme (px/s)
+    rgb: '180,185,195',  // duman rengi (gruplu cizim fill)
+  },
+  spark: {
+    sizeMin: 1.5,
+    sizeMax: 3,          // sizeMin + LCG * (sizeMax - sizeMin)
+    gravity: 120,        // px/s^2 hafif yercekimi
+  },
+  explosion: {
+    baseSize: 96,        // boom_* sprite taban boyutu (px, olcek carpaniyla)
+    smokeDrift: -18,     // smoke sprite yukari suruklenmesi (px)
+  },
+});
+/* Vision P2 (shot_2/3/4, _gnd_a): duman kenarlari sert/pikselli — "yapistirilmis"
+ * gorunum. Yumusatma MEVCUT smoke bloklarini genisletir (EZME YOK):
+ *  - Iz dumani (SmokeSystem): ayni kova icinde icteki-disa N konsantrik gecis.
+ *    Pass alfalari agirlikla olceklendirilir; agirlikler 1'e toplandigi icin
+ *    merkezde toplam alfa ESKI TEPE ALFA ile ayni kalir (yogunluk korunur),
+ *    kenarda 1.0 -> 0.45 -> 0.17 -> 0 kademeli dusus sert kesimin yerine gecer.
+ *  - Boyut varyasyonu + buyume egrisi: parçaciklar ayni capli daireler olarak
+ *    "kopyala-yapistir" okunuyordu. Varyasyon LCG'den (Math.random YASAK),
+ *    determinizm bozulmaz.                                                          */
+Object.assign(CONFIG.FX.smoke, {
+  sizeVar: 0.35,         // ±%35 boyut varyasyonu (spawn'da LCG'den)
+  grow: 0.9,             // oransal buyume (1/s) — parçacik omrunde ~1.5x
+  edgePasses: [          // icteki-disa yumusak kenar gecisleri
+    { r: 1.0, w: 0.55 }, // cekirdek: agirligin yarisindan fazlasi
+    { r: 1.4, w: 0.28 }, // ara kadem
+    { r: 1.85, w: 0.17 },// dis soluk hale — sert kesimi alan pass bu
+  ],
+});
+Object.assign(CONFIG.FX.explosion, {
+  smokeHaloScale: 1.35,  // boom_smoke dis hale olcek carpani (kenar gecisi)
+  smokeHaloAlpha: 0.35,  // hale alfa payi; cekirdek (1-pay) ile toplam tepe
+                         // alfa smokeMaxAlpha (0.16) ile ayni kalir
+});
 /* Round 21: mermi izi — koyu kontrast halesi + parlak cekirdek. YALNIZ CIZIM.
  *
  * Neden: `foreground_contrast` kapisi her mermi icin ±6 px penceresindeki EN
@@ -761,8 +908,8 @@ Object.assign(CONFIG.FX, {
 Object.assign(CONFIG.FX, {
   tracer: {
     len: 22,                        // iz uzunlugu (tracer_shape: <= 22 px)
-    haloW: [6.3, 4.3, 2.7, 1.3],    // hale genisligi = CONFIG.BULLET.w * kat
-    haloA: [0.30, 0.30, 0.34, 0.42],// ...ve o katmanin siyah alfasi (carpim)
+                                    // (hale genislik/alfalari Round 26'da
+                                    // CONFIG.BULLET.halo'ya tasindi — units)
     glowW: 2.2,                     // yumusak additif parlama genisligi (kat)
     glowA: 0.18,                    // ...alfasi — medyani bozmayacak kadar dar
     tipR: 7,                        // uc parlamasi yaricapi (px)
@@ -2538,7 +2685,7 @@ class Explosion {
     if (flashT < 1) {
       const sc = 0.4 + flashT * 1.6;
       const a = 1 - flashT;
-      const sz = 96 * sc;
+      const sz = CONFIG.FX.explosion.baseSize * sc;
       c.globalCompositeOperation = 'lighter';
       c.globalAlpha = a;
       assets.draw(c, 'boom_flash', -sz / 2, -sz / 2, sz, sz);
@@ -2548,7 +2695,7 @@ class Explosion {
     if (fireT < 1) {
       const sc = 0.55 + fireT * 1.55;
       const decay = Math.pow(1 - fireT, 2.8);   // DOGRUSAL DEGIL
-      const sz = 96 * sc;
+      const sz = CONFIG.FX.explosion.baseSize * sc;
       c.globalCompositeOperation = 'lighter';
       c.globalAlpha = decay;
       c.rotate(this.rot);
@@ -2560,10 +2707,17 @@ class Explosion {
     if (smokeT > 0 && smokeT < 1) {
       const sc = 0.6 + smokeT * 1.2;
       const a = F.smokeMaxAlpha * (1 - smokeT);
-      const driftY = -smokeT * 18;   // hafif yukari suruklenme
-      const sz = 96 * sc;
+      const driftY = smokeT * CONFIG.FX.explosion.smokeDrift;   // hafif yukari suruklenme
+      const sz = CONFIG.FX.explosion.baseSize * sc;
+      const E = CONFIG.FX.explosion;
       c.globalCompositeOperation = 'source-over';
-      c.globalAlpha = a;
+      // Yumusak kenar (vision P2): once genis/soluk hale, uzerine cekirdek.
+      // Hale payi cekirdekten dikiliyor (core = a*(1-pay)) — boylece merkezde
+      // toplam alfa smokeMaxAlpha'yi ASMAZ, yalnizca kenar gecisi kademelenir.
+      const hsz = sz * E.smokeHaloScale;
+      c.globalAlpha = a * E.smokeHaloAlpha;
+      assets.draw(c, 'boom_smoke', -hsz / 2, driftY - hsz / 2, hsz, hsz);
+      c.globalAlpha = a * (1 - E.smokeHaloAlpha);
       assets.draw(c, 'boom_smoke', -sz / 2, driftY - sz / 2, sz, sz);
       c.globalAlpha = 1;
     }
@@ -2612,13 +2766,13 @@ class Spark {
     this.maxLife = this.life;
     // renk kovasi: 0 = turuncu, 1 = saribeyaz
     this.colorBin = rnd() < 0.6 ? 0 : 1;
-    this.size = 1.5 + rnd() * 1.5;
+    this.size = CONFIG.FX.spark.sizeMin + rnd() * (CONFIG.FX.spark.sizeMax - CONFIG.FX.spark.sizeMin);
     this.active = true;
   }
   update(dt) {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
-    this.vy += 120 * dt;   // hafif yercekbim
+    this.vy += CONFIG.FX.spark.gravity * dt;   // hafif yercekbim
     this.life -= dt;
     if (this.life <= 0) this.active = false;
   }
@@ -2681,48 +2835,72 @@ class SparkSystem {
 /* ---- src/fx/Smoke.js ---- */
 class Smoke {
   constructor() { this.active = false; }
-  spawn(x, y, life) {
+  spawn(x, y, life, rnd) {
+    const S = CONFIG.FX.smoke;
     this.x = x; this.y = y;
     this.life = life;
     this.maxLife = life;
-    this.size = 5;                        // sabit boyut (deterministik)
-    this.vy = -18;                        // hafif yukari suruklenme
+    // Boyut varyasyonu LCG'den (Math.random YASAK — determinizm). rnd == null
+    // ise varyasyon 0: cagiran taraf seed akisi vermeden de guvenle kullanir.
+    const v = rnd == null ? 0 : (rnd() - 0.5) * 2;      // -1..1
+    this.size = S.size * (1 + v * S.sizeVar);
+    this.grow = S.grow * (1 + v * 0.5);                 // buyume egrisi de degisir
+    this.vy = S.vy;         // hafif yukari suruklenme
     this.active = true;
   }
   update(dt) {
     this.y += this.vy * dt;
+    this.size += this.size * this.grow * dt;  // "yapistirilmis" sabit daireleri kirar
     this.life -= dt;
     if (this.life <= 0) this.active = false;
   }
 }
 
-/* Hurda duman izi parcacigi: gruplu cizimde alfa kovasina gore tek fill. */
+/* Hurda duman izi parcacigi: gruplu cizimde alfa kovasina gore tek fill.
+ * Kenarlar SmokeSystem'deki konsantrik edgePasses ile kademelendirilir. */
 
 /* ---- src/fx/SmokeSystem.js ---- */
 class SmokeSystem {
-  constructor(size) { this.pool = new Pool(size, () => new Smoke()); }
+  constructor(size) {
+    this.pool = new Pool(size, () => new Smoke());
+    this._bins = [[], [], []];   // sicak dongude new yok — bir kez ayrildi
+  }
   acquire() { return this.pool.acquire(); }
   update(dt) { this.pool.forEach((s) => s.update(dt)); }
   count() { return this.pool.count(); }
-  /* Gruplu cizim: alfa kovasi (3) — grup basina TEK beginPath + TEK fill. */
+  /* Gruplu cizim: alfa kovasi (3) — kova basina TEK beginPath + TEK fill.
+   * Yumusak kenar (vision P2): her kova icinde icteki-disa konsantrik
+   * edgePasses cizilir. Ayni pass'in daireleri TEK path'te birlesir (union),
+   * yani ust uste binen parcaciklar istiflenmez; pass alfalari agirlikla
+   * olceklendirildigi icin merkezdeki toplam alfa eski tepe alfa ile ayni
+   * kalir. Kenarda ise alfa 1.0 -> 0.45 -> 0.17 -> 0 kademeli dusus yapar. */
   draw(c) {
-    const bins = [[], [], []];
+    const S = CONFIG.FX.smoke;
+    const bins = this._bins;
+    bins[0].length = 0; bins[1].length = 0; bins[2].length = 0;
     this.pool.forEach((s) => {
       const lt = s.life / s.maxLife;         // 1 -> 0
       bins[lt > 0.66 ? 2 : lt > 0.33 ? 1 : 0].push(s);
     });
     const alphas = [0.05, 0.09, 0.14];       // duman: dusuk alfa (<= 0.16 kurali)
+    const passes = S.edgePasses;
     c.save();
     for (let ai = 0; ai < 3; ai++) {
       const arr = bins[ai];
       if (!arr.length) continue;
-      c.fillStyle = `rgba(180,185,195,${alphas[ai]})`;
-      c.beginPath();
-      for (const s of arr) {
-        c.moveTo(s.x + s.size, s.y);
-        c.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+      for (let pi = 0; pi < passes.length; pi++) {
+        const P = passes[pi];
+        const a = (alphas[ai] * P.w).toFixed(4);
+        c.fillStyle = `rgba(${S.rgb},${a})`;
+        c.beginPath();
+        for (let k = 0; k < arr.length; k++) {
+          const s = arr[k];
+          const r = s.size * P.r;
+          c.moveTo(s.x + r, s.y);
+          c.arc(s.x, s.y, r, 0, Math.PI * 2);
+        }
+        c.fill();
       }
-      c.fill();
     }
     c.restore();
   }
@@ -2748,6 +2926,7 @@ class FallingWreck {
     this.vy = W.startVy;                             // baslangicta hafif asagi itki
     this.size = 48;                                  // cizim boyutu (manifest taban ~64)
     this._smokeAcc = 0;                              // duman izi biriktirici (s)
+    this._rnd = rnd;                                 // duman boyut varyasyonu icin LCG akisi
     this.active = true;
   }
   update(dt, fx) {
@@ -2772,7 +2951,7 @@ class FallingWreck {
       this._smokeAcc -= W.smokeEvery;
       const p = fx.smoke.acquire();
       if (!p) break;
-      p.spawn(this.x + Math.sin(this.ang) * 10, this.y - 14, W.smokeLife);
+      p.spawn(this.x + Math.sin(this.ang) * 10, this.y - 14, W.smokeLife, this._rnd);
     }
   }
   draw(c, assets) {
@@ -3211,18 +3390,21 @@ class CityScroller {
     if (this.landmarkShown || !this.landmark) return;
     this.landmarkShown = true;
   }
+  /* NOT: bina katmani CIZILMEZ — "ucusan binalar" duzeltmesinde cizim
+     sahneden kaldirildi. Bu uretim yalnizca buildingsOnScreen test kancasini
+     (Game.state -> tools/evaluate.py) besler; sim/carpisma okumaz. */
   _ensureBuilt() {
     const SPACING = 260;                       // bina araligi (px)
     const H = CONFIG.H;
     const maxSlot = Math.floor((this.dist + H) / SPACING);
+    if (this.builtUpTo >= maxSlot) return;     // yeni slot yok -> tarama yok
     while (this.builtUpTo < maxSlot) {
       this.builtUpTo++;
       this._spawnAt(this.builtUpTo, SPACING);
     }
-    // ekrandan coktan cikmis binasi at
+    // ekrandan coktan cikmis binasi at (yalnızca spawn olan adımda)
     const minY = this.dist - H;                // y < minY -> ekranin ustunde
     this.buildingsList = this.buildingsList.filter((b) => b.y > minY - 400);
-    if (!this.buildingsList.length) this.buildingsList = [];
   }
   _spawnAt(slot, spacing) {
     // LCG: her slot icin deterministik tohum (Math.random YOK)
@@ -3460,24 +3642,32 @@ class Bullet {
    Bir havuzun TAMAMINI tek gecişte cizer. Cagrilma yeri: Game._drawBullets.
    Donen deger iz uzunlugu (L) — cagiran `this.tracerLen` kancasina yazar.
 
-   Katman sirasi (hepsi renk+alfa kovasina gore gruplu, sicak dongude tahsis
-   YOK — eski kodun mermi basina createRadialGradient'i kaldirildi):
-     1) koyu kontrast halesi  — genisten dara 4 kademe, siyah + alfa
-     2) koyu iz (trail)       — merminin arkasinda kisa sonen hat
-     3) yumusak additif parlama + cyan/beyaz cekirdek  ('lighter')
-     4) uc parlamasi          — iki additif yay (gradyan yok)
+    Katman sirasi (hepsi renk+alfa kovasina gore gruplu, sicak dongude tahsis
+    YOK — eski kodun mermi basina createRadialGradient'i kaldirildi):
+      1) koyu kontrast halesi  — KAPSUL: 6 kademe round-cap cizgi (r27)
+      2) koyu iz (trail)       — merminin arkasinda kisa sonen hat
+      3) yumusak additif parlama + cyan/beyaz cekirdek  ('lighter')
+      4) uc parlamasi          — iki additif yay (gradyan yok)
 
-   Neden hale: `foreground_contrast` tepe - medyan olcer; 'lighter' cekirdek
-   her zeminde 255'e doyar, yani tepe yukseltilemez. Parlak bulut bandin
-   medyanini ~230'a cikarinca fark 25'e duser (beyaz iz beyaz bulutta gercekten
-   kaybolur). Siyah + alfa carpimsaldir: koyu sehirde gorunmez, parlak zeminde
-   mermiye kendi cercevesini verir ve bandin medyanini asagi ceker. Arka plan
-   karartilmaz — hale mermiye aittir ve mermiyle birlikte hareket eder.
+    Neden hale: `foreground_contrast` tepe - medyan olcer; 'lighter' cekirdek
+    her zeminde 255'e doyar, yani tepe yukseltilemez. Parlak bulut bandin
+    medyanini ~230'a cikarinca fark 25'e duser (beyaz iz beyaz bulutta gercekten
+    kaybolur). Siyah + alfa carpimsaldir: koyu sehirde gorunmez, parlak zeminde
+    mermiye kendi cercevesini verir ve bandin medyanini asagi ceker. Arka plan
+    karartilmaz — hale mermiye aittir ve mermiyle birlikte hareket eder.
 
-   Cizim/sim ayrimi: burada sim durumu OKUNUR, hicbiri yazilmaz; carpisma
-   dikdortgeni degismez (genislikler CONFIG.BULLET.w'nin katidir).          */
+    Neden kapsul (Round 27): dikdortgen fillRect'in keskin koseleri vision
+    denetiminde u kez "harmanlanmamis siyah dikdortgen" olarak bildirildi.
+    Kademeler artik lineCap='round' cizgi — uc formu tracer uzunluguyla
+    uyumlu kapsul, yatayda 6 ince kademe kenar bandini eritir. Genislikler
+    ve birikimli tepe karanlik (~0.83) eski desenle ayni buyuklukte;
+    kapinin 60 esigine ayni marjla hizmet eder.
+
+    Cizim/sim ayrimi: burada sim durumu OKUNUR, hicbiri yazilmaz; carpisma
+    dikdortgeni degismez (genislikler CONFIG.BULLET.w'nin katidir).          */
 Bullet.drawPool = function (c, pool, isEnemy) {
   const T = CONFIG.FX.tracer;
+  const H = CONFIG.BULLET.halo;
   const L = T.len, half = L * 0.5;
   const bw = CONFIG.BULLET.w;          // tek boyut kaynagi (carpisma ile ayni)
   const TAU = Math.PI * 2;
@@ -3486,14 +3676,16 @@ Bullet.drawPool = function (c, pool, isEnemy) {
   const inner = isEnemy ? 'rgba(255,220,180,0.95)' : 'rgba(255,255,255,0.95)';
   c.save();
   // --- 1) KOYU KONTRAST HALESI (source-over siyah = carpim)
-  c.lineCap = 'butt';
-  c.fillStyle = '#000';
-  for (let i = 0; i < T.haloW.length; i++) {
-    const w = bw * T.haloW[i];
-    c.globalAlpha = T.haloA[i];
+  // Kapsul: her kademe round-cap cizgi, kademe basina tek stroke (gruplu).
+  // Ucler yuvarlanir, yataydaki 6 ince alfa kademesi kenar bantlanmasini eritir.
+  c.lineCap = 'round';
+  c.strokeStyle = '#000';
+  for (let i = 0; i < H.widths.length; i++) {
+    c.globalAlpha = H.alphas[i];
+    c.lineWidth = bw * H.widths[i];
     c.beginPath();
-    pool.forEach((b) => { c.rect(b.x - w * 0.5, b.y - half, w, L); });
-    c.fill();
+    pool.forEach((b) => { c.moveTo(b.x, b.y + half); c.lineTo(b.x, b.y - half); });
+    c.stroke();
   }
   // --- 2) KOYU IZ: merminin arkasinda hizla sonen kisa hat
   c.lineCap = 'round';
@@ -3605,82 +3797,34 @@ class SubDrone {
   constructor() { this.active = false; }
   reset(x, y) {
     this.x = x; this.y = y;
-    this.mode = 'gun';         // 'gun' | 'kamikaze'
-    this.target = null;        // Enemy nesnesi (kamikaze modu)
     this.fireTimer = 0;
-    this.angle = -Math.PI / 2; // varsayilan: yukari
-    this._side = this._side || 1;   // sag/sol — ilk atamada belirlenir
     this.active = true;
-  }
-  /* Kamikaze moduna gec: en yakin aktif dusmana kilitlen. */
-  launch(target) {
-    if (!target) return;
-    this.mode = 'kamikaze';
-    this.target = target;
   }
   update(dt, game) {
     const S = CONFIG.SUBDRONE;
     const p = game.player;
-    if (this.mode === 'gun') {
-      /* Yumusak gecikmeyle takip: oyuncunun ±offset px yanina kritik sonumlu
-         yaklasim. Hedef konum her adimda hesaplanir, konum ustel sonumle
-         hedefe dogru ilerler — ani sikintilar yok. */
-      const side = this._side || 1;   // -1 sol, +1 sag
-      const tx = p.x + side * S.offset;
-      const ty = p.y + 8;             // hafif asagida
-      const f = Math.min(1, S.followSmooth * dt);
-      this.x += (tx - this.x) * f;
-      this.y += (ty - this.y) * f;
-      // Ates: oyuncuyla birlikte, hasar 1, aralik fireIntervalMs
-      this.fireTimer -= dt;
-      if (game.input.firing() && this.fireTimer <= 0) {
-        this.fireTimer = S.fireIntervalMs / 1000;
-        const b = game.bulletPool.acquire();
-        if (b) { b.reset(this.x, this.y - 12); }
-      }
-    } else {
-      /* Kamikaze modu: hedefe 620 px/s hiza. Geri gelmez. */
-      if (!this.target || !this.target.active) {
-        // Hedef olduruldu: son bilinen yone devam et, ekrandan cik
-        this.x += Math.cos(this.angle) * S.kamikazeSpeed * dt;
-        this.y += Math.sin(this.angle) * S.kamikazeSpeed * dt;
-        if (this.y < -40 || this.y > CONFIG.H + 40 || this.x < -40 || this.x > CONFIG.W + 40) this.active = false;
-        return;
-      }
-      const dx = this.target.x - this.x, dy = this.target.y - this.y;
-      const d = Math.hypot(dx, dy) || 1;
-      this.angle = Math.atan2(dy, dx);
-      this.x += (dx / d) * S.kamikazeSpeed * dt;
-      this.y += (dy / d) * S.kamikazeSpeed * dt;
-      // Carpisma kontrolu (Player tarafinda da yapilir ama buradan erken donus)
-      const rr = 10 + (this.target.radius || 20);
-      if (dx * dx + dy * dy <= rr * rr) {
-        for (let i = 0; i < S.kamikazeDamage; i++) {
-          if (!this.target.active) break;
-          const killed = this.target.hit();
-          if (killed) game._onEnemyKilled(this.target);
-        }
-        game.fx.explode(this.x, this.y);
-        this.active = false;
-      }
+    /* Yumusak gecikmeyle takip: oyuncunun ±offset px yanina kritik sonumlu
+       yaklasim. Hedef konum her adimda hesaplanir, konum ustel sonumle
+       hedefe dogru ilerler — ani sikintilar yok. */
+    const side = this._side || 1;   // -1 sol, +1 sag
+    const tx = p.x + side * S.offset;
+    const ty = p.y + 8;             // hafif asagida
+    const f = Math.min(1, S.followSmooth * dt);
+    this.x += (tx - this.x) * f;
+    this.y += (ty - this.y) * f;
+    // Ates: oyuncuyla birlikte, hasar 1, aralik fireIntervalMs
+    this.fireTimer -= dt;
+    if (game.input.firing() && this.fireTimer <= 0) {
+      this.fireTimer = S.fireIntervalMs / 1000;
+      const b = game.bulletPool.acquire();
+      if (b) { b.reset(this.x, this.y - 12); }
     }
   }
   draw(c, assets) {
     const s = CONFIG.SUBDRONE.size;
     c.save();
     c.translate(this.x, this.y);
-    if (this.mode === 'kamikaze') {
-      // Kamikaze: hafif parlayici turuncu kenar isigi
-      c.rotate(this.angle + Math.PI / 2);
-      assets.draw(c, 'sub_drone', -s / 2, -s / 2, s, s);
-      c.globalCompositeOperation = 'lighter';
-      c.strokeStyle = 'rgba(255,150,40,0.7)';
-      c.lineWidth = 1.5;
-      c.beginPath(); c.arc(0, 0, s * 0.35, 0, Math.PI * 2); c.stroke();
-    } else {
-      // Namlu modu: normal cizim
-      assets.draw(c, 'sub_drone', -s / 2, -s / 2, s, s);
-    }
+    assets.draw(c, 'sub_drone', -s / 2, -s / 2, s, s);
     c.restore();
   }
 }
@@ -3839,6 +3983,16 @@ class Skimmer {
     const S = CONFIG.SKIMMER;
     c.save();
     c.translate(this.x, this.y);
+    /* Yumuşak koyu hale — hafifletilmiş sürüm (CONFIG.ENEMY.haloLight).
+       Liman sahnesinde suüstü gemileriyle ton çakışmasını keser; dairesel
+       simetrik olduğu için rotasyondan BAĞIMSIZ, transform öncesi çizilir.
+       Yalnızca çizim — sim/hitbox etkisi yok. */
+    const HAL = CONFIG.ENEMY.haloLight;
+    const haloR = Math.max(S.w, S.h) * HAL.radiusMul;
+    const halo = c.createRadialGradient(0, 0, Math.max(S.w, S.h) * HAL.innerMul, 0, 0, haloR);
+    for (let i = 0; i < HAL.pos.length; i++) halo.addColorStop(HAL.pos[i], HAL.col[i]);
+    c.fillStyle = halo;
+    c.beginPath(); c.arc(0, 0, haloR, 0, Math.PI * 2); c.fill();
     /* Yatay ucus: govde gidis yonune 90° cevrilir, yon bayragina gore aynalanir. */
     c.rotate(this.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
     const w = S.h, h = S.w;            // dondurulmus cerceve
@@ -4407,10 +4561,22 @@ class Enemy {
     const s = this.radius * 2;
     c.save();
     c.translate(this.x, this.y);
-    // --- govde sprite'i
+    // --- yumuşak koyu hale (yalnızca çizim; sim'e dokunmaz). Oyuncu halesi
+    //     deseni (Player.js): radyal gradeyan, rgba kademeleri config'ten.
+    //     Neden: yeşil scout / cyan tonlu tipler parlak şehir karosu ve liman
+    //     suyu üstünde kaynaşıyordu (mimo: _gnd_a ve shot_2, öncelik 4).
+    //     Hale sprite'ın TAŞINA kadar geniş ve yumuşak kenarlı — "gövde
+    //     çevresinde daire" hissi vermez. Kenar ışığı ayrıcadır (aşağıda).
+    const HAL = CONFIG.ENEMY.halo;
+    const haloR = s * HAL.radiusMul;
+    const halo = c.createRadialGradient(0, 0, s * HAL.innerMul, 0, 0, haloR);
+    for (let i = 0; i < HAL.pos.length; i++) halo.addColorStop(HAL.pos[i], HAL.col[i]);
+    c.fillStyle = halo;
+    c.beginPath(); c.arc(0, 0, haloR, 0, Math.PI * 2); c.fill();
+    // --- gövde sprite'i
     assets.draw(c, this.sprite, -s/2, -s/2, s, s);
-    // --- tip ayrimi: kenar isigi (yalnizca bu dronun rengi; hale YOK —
-    //     oyuncu tek "hale"li birim kalir)
+    // --- tip ayrimi: kenar isigi (halenin ustune additive vurur; oyuncudaki
+    //     cyan kenar isigi deseninin dusman renkli karsiligi)
     c.globalCompositeOperation = 'lighter';
     if (this.type === 'scout') {
       // soğuk gri govde uzerine ince KIRMIZI kenar isigi
@@ -4461,7 +4627,7 @@ class Enemy {
       c.setLineDash([6, 6]);
       c.beginPath();
       c.moveTo(0, s * 0.3);
-      c.lineTo(this.lockX - this.x, 620 - this.y);   // oyuncu y'si ~620
+      c.lineTo(this.lockX - this.x, CONFIG.H - this.y);
       c.stroke();
       c.setLineDash([]);
       c.globalCompositeOperation = 'source-over';
@@ -4671,6 +4837,7 @@ class Player {
     const s = this.subs.acquire();
     if (!s) return false;
     s.reset(this.x, this.y);
+    s._side = this._subSide[this.subs.count() - 1] || 1;
     s.mode = 'gun';
     return true;
   }
@@ -4687,24 +4854,6 @@ class Player {
     return true;
   }
   get dashActive() { return this.dashT > 0; }
-  /* Sub-drone firlat: en yakin aktif dusmana kamikaze modunda git.
-     Is harcar; overheated iken calismaz. */
-  launchSub(game) {
-    if (game.overheated) return false;
-    const target = game._nearestEnemy();
-    if (!target) return false;
-    // En az aktif sub-dronu sec (varsa), yoksa havuzdan al
-    let sub = null;
-    this.subs.forEach((s) => { if (!sub && s.mode === 'gun') sub = s; });
-    if (!sub) {
-      sub = this.subs.acquire();
-      if (!sub) return false;   // havuz dolu
-      sub.reset(this.x, this.y);
-    }
-    game._addHeat(CONFIG.HEAT.cost.subLaunch);
-    sub.launch(target);
-    return true;
-  }
   /* Hitbox yaricapi (tank %15 buyuk). */
   hitR() { return CONFIG.PLAYER.half * this._hitboxMul; }
   takeHit() {
@@ -4759,11 +4908,6 @@ class Player {
        Is soneumu Game._simStep yapar (tek kaynak game.heat). */
     const dashDir = input.consumeDash();
     if (dashDir) this.dash(dashDir.x, dashDir.y, game);
-    /* Sub-drone firlatma: input._subLaunchQueued bayragi */
-    if (input._subLaunchQueued) {
-      input._subLaunchQueued = false;
-      this.launchSub(game);
-    }
     const DASH = CONFIG.PLAYER.DASH;
     /* acro-dash: sim zamanina bagli 3x hamle. Dash sirasinda normal hareket
        devre disi kalir; iz noktasi her adimda en eski slotun uzerine yazilir. */
@@ -4820,7 +4964,7 @@ class Player {
          Tek kaynak game.fireSlowMul; Game._computeFireMods her sim adiminda
          hesaplar ve iki jammer ayni anda etkiliyse carpan bir kez uygulanir. */
       if (game.fireSlowMul && game.fireSlowMul < 1) interval /= game.fireSlowMul;
-      this.fireTimer = this.poolSize || interval;
+      this.fireTimer = interval;
       this.muzzle = CONFIG.FIRE.muzzleMs / 1000;
       const offsets = lv.count === 1 ? [0] :
                       lv.count === 2 ? [-lv.offset, lv.offset] :
@@ -4837,7 +4981,7 @@ class Player {
     }
     if (this.muzzle > 0) this.muzzle -= dt;
     if (this.invincible > 0) this.invincible -= dt;
-    /* Sub-dronlar: takip + ates / kamikaze ilerleme */
+    /* Sub-dronlar: takip + ates */
     this.subs.forEach((s) => s.update(dt, game));
   }
   draw(ctx, assets) {
@@ -6224,17 +6368,25 @@ Object.assign(Game.prototype, {
     this._puSeed = (Math.imul(this._puSeed, 1664525) + 1013904223) >>> 0;
     return this._puSeed / 4294967296;
   },
-  /* Dusman olumunda %12 pu_weapon, %8 pu_rocket, %6 pu_subdrone, %5 pu_repair
-     duser (tek LCG'den art arda — Math.random YOK). Round 18: onarim kutusu. */
+  /* Dusman olumunda %12 pu_weapon, %8 pu_rocket, %6 pu_shield, %6 pu_subdrone,
+     %5 pu_repair duser (tek LCG'den art arda — Math.random YOK).
+     Round 18: onarim kutusu. Round 26 (F3): shield dali — HUD'daki KALKAN
+     satiri gerceklesir. Zincirin sekli degittigi icin LCG akisi/sim ciktisi
+     bilincli olarak farkli akar (altin iz sonradan senkronlanir). */
   _maybeDropPowerup(x, y) {
     const r = this._puLcg();
-    if (r < CONFIG.WEAPON.dropChance) {
+    const cW = CONFIG.WEAPON.dropChance, cR = CONFIG.ROCKET.dropChance;
+    const cS = CONFIG.SHIELD.dropChance;
+    const cD = CONFIG.HEAT.dropChanceSubdrone, cP = CONFIG.REPAIR.dropChance;
+    if (r < cW) {
       this.powerups.push({ type: 'weapon', x, y, active: true });
-    } else if (r < CONFIG.WEAPON.dropChance + CONFIG.ROCKET.dropChance) {
+    } else if (r < cW + cR) {
       this.powerups.push({ type: 'rocket', x, y, active: true });
-    } else if (r < CONFIG.WEAPON.dropChance + CONFIG.ROCKET.dropChance + CONFIG.HEAT.dropChanceSubdrone) {
+    } else if (r < cW + cR + cS) {
+      this.powerups.push({ type: 'shield', x, y, active: true });
+    } else if (r < cW + cR + cS + cD) {
       this.powerups.push({ type: 'subdrone', x, y, active: true });
-    } else if (r < CONFIG.WEAPON.dropChance + CONFIG.ROCKET.dropChance + CONFIG.HEAT.dropChanceSubdrone + CONFIG.REPAIR.dropChance) {
+    } else if (r < cW + cR + cS + cD + cP) {
       this.powerups.push({ type: 'repair', x, y, active: true });
     }
   },
@@ -6889,7 +7041,7 @@ Object.assign(Game.prototype, {
     c.fillText(label, cx - rw / 2, y + 4);
     for (let i = 0; i < max; i++) {
       c.beginPath(); c.arc(bx + 8 + i * 20, y, 5, 0, Math.PI * 2);
-      c.fillStyle = i < val ? '#6fe3ff' : 'rgba(255,255,255,0.13)';
+      c.fillStyle = i < val ? `rgb(${CONFIG.UI.accentRGB})` : 'rgba(255,255,255,0.13)';
       c.fill();
     }
     c.textAlign = 'right';
@@ -6926,10 +7078,11 @@ Object.assign(Game.prototype, {
     c.beginPath(); c.arc(cx, cy, r * 0.94, 0, Math.PI * 2); c.stroke();
   },
   /* Kaidenin cevresinde donen iki kisa yay — "canli tarama" hissi.
-     Rotor yaylarinin YERINE gecmez: `CONFIG.ROTOR.centers` yalnizca
-     drone_player icin tanimli, yani swift/tank/ghost onizlemesi tamamen
-     olu duruyordu. Bu halka sprite geometrisinden BAGIMSIZ oldugu icin
-     dort dronda da ayni calisir ve govdeye sahte yay cizmez. */
+     Rotor yaylarinin YERINE gecmez: eskiden yalniz falcon'un merkezleri
+     tanimliydi ve diger uc dronun onizlemesinde rotor spin hic cizilmiyordu.
+     Round 26 (F8) ile dort dronun merkezleri de CONFIG.ROTOR.centers'ta;
+     bu halka yine de sprite geometrisinden BAGIMSIZ oldugu icin dort dronda
+     da ayni calisir ve govdeye sahte yay cizmez. */
   _uiScanRing(c, cx, cy, r, speed) {
     const a = performance.now() * 0.0009 * (speed || 1);
     c.save();
@@ -6939,6 +7092,43 @@ Object.assign(Game.prototype, {
     c.beginPath(); c.arc(cx, cy, r, a, a + Math.PI * 0.32); c.stroke();
     c.beginPath(); c.arc(cx, cy, r, a + Math.PI, a + Math.PI * 1.16); c.stroke();
     c.restore();
+  },
+  /* Oyunici HUD satirinin tek yazi yardimcisi (round 26, F11): once koyu
+     golge (+2 px), ustune renkli metin. SKOR/SİLAH/KALKAN/ROKET zaten bu
+     dili kullaniyordu; ISI YETMİYOR, JAMMER MENZİLİ ve kombo rozeti golgesiz
+     kalmisti — parlak karo ustunde okunurluk ayni olcutu hak eder.
+     Yalnizca cizim; font/align cagiranin kontrolunde kalir. */
+  _uiHudText(c, text, x, y, col) {
+    c.fillStyle = 'rgba(0,0,0,0.35)';
+    c.fillText(text, x + 2, y + 2);
+    c.fillStyle = col;
+    c.fillText(text, x, y);
+  },
+  /* Round 27: oyunici HUD plakasi — menulerin tam genislik _uiPlate'i oyun
+     alaninda KULLANILAMAZ (ekrani karartma yasagi). Bunun yerine metin
+     blokunun arkasina KUCUK, kenarlari yumusayan bir levha cizilir.
+
+     Kenar yumusamasi golge/blur ile DEGIL, edgePasses katmanli roundRect ile
+     yapilir: her katman bir oncekinden `feather/n` kadar tastir ve katman
+     alfasi l = 1-(1-alpha)^(1/n) secilir, boylece CEKIRDEKTE toplam alfa
+     tam olarak `alpha` olur (blur'lu golge cekirdegi tahmin edilemez sekilde
+     inceltir ve canvas golge ofseti olcek donusumunden etkilenir).
+     Yalnizca cizim; tahsis yok (roundRect arcTo ile cizilir). */
+  _uiHudPlate(c, x, y, w, h, o) {
+    const U = CONFIG.UI, P = U.hudPlate;
+    const a = (o && o.alpha != null) ? o.alpha : P.alpha;
+    const n = (o && o.edgePasses) || P.edgePasses;
+    const f = (o && o.feather != null) ? o.feather : P.feather;
+    const r = (o && o.radius != null) ? o.radius : P.radius;
+    if (w <= 0 || h <= 0) return;
+    const d = f / n;
+    const l = 1 - Math.pow(1 - a, 1 / n);
+    for (let i = n; i >= 1; i--) {
+      const e = (i - 0.5) * d;
+      c.fillStyle = `rgba(${U.plateRGB},${l.toFixed(4)})`;
+      this._uiRoundRect(c, x - e, y - e, w + 2 * e, h + 2 * e, r + e);
+      c.fill();
+    }
   },
   /* ====================================================================== */
   /* Round 12: dron secim ekranı. Acik dronlar parlak + badge; kilitliler
@@ -7258,7 +7448,8 @@ Object.assign(Game.prototype, {
     this._drawRotorWash(c);
     // oyuncu
     this.player.draw(c, this.assets);
-    // oyuncu rotor spin (round 10)
+    // oyuncu rotor spin (round 10) — round 26 (F8): merkezler secilen dronun
+    // sprite'ina gore CONFIG.ROTOR.centers'tan secilir (falcon'a sabit degil)
     {
       const P = CONFIG.PLAYER;
       const s = P.size * 1.1 / 96;   // cizim olcegi (manifest 96)
@@ -7266,7 +7457,7 @@ Object.assign(Game.prototype, {
       c.save();
       c.translate(this.player.x, this.player.y);
       c.rotate(this.player.tilt);
-      this._drawRotorSpin(c, 'drone_player', 0, 0, s, speedF);
+      this._drawRotorSpin(c, this.player.sprite, 0, 0, s, speedF);
       c.restore();
     }
     // Nisan cercevesi (round 9): en yakin dusmanin uzerinde (yalniz cizim)
@@ -7329,9 +7520,9 @@ Object.assign(Game.prototype, {
     c.fillRect(x - 2, y - 2, w + 4, h + 4);
     c.fillStyle = 'rgba(120,20,20,0.8)';
     c.fillRect(x, y, w, h);
-    c.fillStyle = '#ff5540';
+    c.fillStyle = CONFIG.UI.dangerColor;
     c.fillRect(x, y, w * frac, h);
-    c.strokeStyle = 'rgba(255,120,90,0.7)';
+    c.strokeStyle = `rgba(${CONFIG.UI.dangerRGB},0.7)`;
     c.lineWidth = 1;
     c.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
     c.restore();
@@ -7451,76 +7642,91 @@ Object.assign(Game.prototype, {
     this._drawWorld(c, alpha, true);
   },
   _drawHud(c) {
+    const U = CONFIG.UI;
     c.save();
     c.textAlign = 'left';
-    c.font = 'bold 22px monospace';
-    c.fillStyle = 'rgba(0,0,0,0.35)';
-    c.fillText(`SKOR ${this.score}`, 14, 32);
-    c.fillStyle = '#ffffff';
-    c.fillText(`SKOR ${this.score}`, 12, 30);
-    // can: drone_player kucultulmus ikonu ile (round 5)
+    /* Round 27: sol ust blok once KENDI LEVHASINI cizer (menulerdeki _uiPlate
+       deseni, tam genislik yerine blok genisliginde). Boyut icerikten turetilir:
+       can/sub-dron ikonlarinin sag ucu genisligi, gorunen satir sayisi
+       (KALKAN/ROKET/JAMMER kosullu) yuksekligi belirler. Gologe (_uiHudText)
+       birlikte calisir — levha arka plani durultur, golge harf kenarini. */
+    const HP = U.hudPlate, R = HP.rows;
     const lives = this.player.lives;
-    for (let i = 0; i < CONFIG.PLAYER_LIVES; i++) {
-      const lx = 14 + i * 28, ly = 42;
+    const D = CONFIG.DRONES.find((d) => d.id === this.player.droneId) || CONFIG.DRONES[0];
+    const maxLives = Math.max(D.lives, lives);
+    /* Ikonlar: 24/16 px yerine ~1.15x (tam sayi) cizim + tam sayi konum.
+       Kaynak sprite 96 px; 4x kucultme aliasing/pikselli izlenim veriyordu. */
+    const iconS = Math.round(24 * U.hudIconScale);    // 28
+    const subS = Math.round(16 * U.hudIconScale);     // 18
+    const iconY = 46, subY = 51;                      // ikon satiri (isi cubugunun altinda)
+    const subX0 = 14 + maxLives * (iconS + 2) + 8;    // can ikonlarindan SONRA
+    let bottom = R.silah + 8;
+    if (this.shieldT > 0) bottom = R.kalkan + 8;
+    if (this.rocketT > 0) bottom = R.roket + 8;
+    /* Jammer satiri liman bolumunde her zaman yer ayirir; plaka yanip sonerken
+       boyut degistirirse bu kendi basina dikkat dagitir. */
+    if (CONFIG.STAGES[this.stageIdx].ground) bottom = R.jammer + 8;
+    const right = Math.max(12 + HP.heatW, subX0 + CONFIG.SUBDRONE.max * (subS + 2) + 6);
+    this._uiHudPlate(c, HP.x, HP.y, right - HP.x, bottom - HP.y, HP);
+    c.font = 'bold 22px monospace';
+    this._uiHudText(c, `SKOR ${this.score}`, 12, R.skor, '#ffffff');
+    // can: SECILEN dronun kucultulmus ikonu ile (round 26, F7). Ust sinir
+    // CONFIG.PLAYER_LIVES (3) sabitinden degil dronun baslangic canindan
+    // turetilir — tank 5 canla basliyor, 4-5. can artik gorunur ve ekran
+    // shipselect pip'leriyle (max 5) uyumlu.
+    for (let i = 0; i < maxLives; i++) {
+      const lx = 14 + i * (iconS + 2), ly = iconY;
       if (i < lives) {
-        this.assets.draw(c, 'drone_player', lx, ly, 24, 24);
+        this.assets.draw(c, D.sprite, lx, ly, iconS, iconS);
       } else {
         c.globalAlpha = 0.25;
-        this.assets.draw(c, 'drone_player', lx, ly, 24, 24);
+        this.assets.draw(c, D.sprite, lx, ly, iconS, iconS);
         c.globalAlpha = 1;
       }
     }
-    // SİLAH seviyesi (round 10). Round 12: hasarda yanip soner (kirmizi)
+    // SİLAH seviyesi (round 10). Round 12: hasarda yanıp soner (kirmizi)
     c.font = 'bold 16px monospace';
-    c.fillStyle = 'rgba(0,0,0,0.35)';
-    c.fillText(`SİLAH ${this.weaponLevel}`, 14, 78);
-    let wcol = this.weaponLevel >= 3 ? '#ffd24a' : '#6fe3ff';
+    let wcol = this.weaponLevel >= 3 ? '#ffd24a' : `rgb(${U.accentRGB})`;
     if (this.weaponFlashT > 0 && Math.floor(this.weaponFlashT * 8) % 2 === 0) wcol = '#ff5040';
-    c.fillStyle = wcol;
-    c.fillText(`SİLAH ${this.weaponLevel}`, 12, 76);
+    this._uiHudText(c, `SİLAH ${this.weaponLevel}`, 12, R.silah, wcol);
     // Kalkan kalan sure (round 10)
     if (this.shieldT > 0) {
       const s = Math.ceil(this.shieldT);
-      c.fillStyle = 'rgba(0,0,0,0.35)';
-      c.fillText(`KALKAN ${s}s`, 14, 98);
-      c.fillStyle = '#50b4ff';
-      c.fillText(`KALKAN ${s}s`, 12, 96);
+      this._uiHudText(c, `KALKAN ${s}s`, 12, R.kalkan, '#50b4ff');
     }
     /* Round 12: roket kalan sure (HUD'da gorunur) */
     if (this.rocketT > 0) {
       const s = Math.ceil(this.rocketT);
-      c.fillStyle = 'rgba(0,0,0,0.35)';
-      c.fillText(`ROKET ${s}s`, 14, 118);
-      c.fillStyle = '#ff8040';
-      c.fillText(`ROKET ${s}s`, 12, 116);
+      this._uiHudText(c, `ROKET ${s}s`, 12, R.roket, '#ff8040');
     }
     /* Round 13: TEK isisi cubugu — skorun altinda ince bar. AyrI batarya/
        muhimmat gosterici YOK (tek kaynak ilkesi). Asiri sicaklikta kirmizi
        yanip soner; subLaunch basarisizsa kisa uyarı. */
     const H = CONFIG.HEAT;
-    const hbW = 170, hbH = 5, hbX = 12, hbY = 38;
+    const hbW = HP.heatW, hbH = 5, hbX = 12, hbY = 38;
     c.fillStyle = 'rgba(0,0,0,0.45)';
     c.fillRect(hbX - 1, hbY - 1, hbW + 2, hbH + 2);
-    let hcol = this.heat < 50 ? '#5fd4e8' : this.heat < 85 ? '#ffd24a' : '#ff5540';
+    let hcol = this.heat < 50 ? '#5fd4e8' : this.heat < 85 ? '#ffd24a' : U.dangerColor;
     if (this.overheated && Math.floor(this.simTimeMs * 0.012) % 2 === 0) hcol = '#ff2010';
     c.fillStyle = hcol;
     c.fillRect(hbX, hbY, hbW * Math.min(1, this.heat / H.max), hbH);
-    // Sub-dron durumu: iki kucuk ikon (sub_drone sprite'i, 16 px)
+    /* Sub-dron durumu: iki kucuk ikon — can ikonlarinin SAGINDA (round 27'ye
+       kadar ayni x bolgesinde ust uste biniyorlardi; denetimde "ikonlar ust
+       uste binmis" olarak tekrar tekrar bildirildi). */
     for (let i = 0; i < CONFIG.SUBDRONE.max; i++) {
-      const sx = 12 + i * 20, sy = 47;
+      const sx = subX0 + i * (subS + 2), sy = subY;
       if (i < this.subDrones) {
-        this.assets.draw(c, 'sub_drone', sx, sy, 16, 16);
+        this.assets.draw(c, 'sub_drone', sx, sy, subS, subS);
       } else {
         c.globalAlpha = 0.22;
-        this.assets.draw(c, 'sub_drone', sx, sy, 16, 16);
+        this.assets.draw(c, 'sub_drone', sx, sy, subS, subS);
         c.globalAlpha = 1;
       }
     }
-    // Is yetmezse kisa uyarı (yanıp söner)
+    // Is yetmezse kisa uyarı (yanıp söner) — round 26 (F11): aynı gölge dili
     if (this.subLaunchFailT > 0 && Math.floor(this.subLaunchFailT * 10) % 2 === 0) {
       c.font = 'bold 11px monospace';
-      c.fillStyle = '#ff5040';
-      c.fillText('ISI YETMİYOR', 12, 74);
+      this._uiHudText(c, 'ISI YETMİYOR', 12, R.silah - 2, '#ff5040');
     }
     /* Round 16: liman bolumu — jammer menzildeyken glitch/uyari dili.
        Yeni panel acilmaz; mevcut uyarı satirina eklenir. */
@@ -7528,28 +7734,29 @@ Object.assign(Game.prototype, {
       const blink = Math.floor(this.simTimeMs * 0.008) % 2 === 0;
       if (blink) {
         c.font = 'bold 11px monospace';
-        c.fillStyle = '#c080ff';
-        c.fillText('JAMMER MENZİLİ', 12, 138);
+        this._uiHudText(c, 'JAMMER MENZİLİ', 12, R.jammer, '#c080ff');
       }
     }
     /* Round 18: kombo carpani — sag ustte kisa rozet + kalan sure cubugu.
-       Ekran kalabaliklasmasin diye tek satirlik kompakt bir blok; yeni panel yok. */
+       Ekran kalabaliklasmasin diye tek satirlik kompakt bir blok; yeni panel yok.
+       Round 26 (F10+F11): cyan tek kaynaktan (accentRGB), golge ayni dilde.
+       Round 27: rozet de kendi kucuk levhasini tasiyor (ayni okunurluk olcutu). */
     if (this.comboCount > 0) {
       const m = this.comboMult();
       const C = CONFIG.COMBO;
+      const CP = U.comboPlate;
       const bx = CONFIG.W - 78, by = 14, bw = 64, bh = 5;
+      this._uiHudPlate(c, CONFIG.W - CP.w - 8, CP.y, CP.w, CP.h, CP);
       // rozet metni (x2 gibi)
       c.textAlign = 'right';
       c.font = 'bold 20px monospace';
-      c.fillStyle = 'rgba(0,0,0,0.4)';
-      c.fillText(`x${m}`, CONFIG.W - 12, 30);
-      c.fillStyle = m >= 4 ? '#ffd24a' : m >= 2 ? '#6fe3ff' : '#ffffff';
-      c.fillText(`x${m}`, CONFIG.W - 14, 28);
+      this._uiHudText(c, `x${m}`, CONFIG.W - 14, 28,
+        m >= 4 ? '#ffd24a' : m >= 2 ? `rgb(${U.accentRGB})` : '#ffffff');
       // kalan sure cubugu (ince)
       const frac = Math.max(0, Math.min(1, this.comboT / (C.windowMs / 1000)));
       c.fillStyle = 'rgba(0,0,0,0.45)';
       c.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-      c.fillStyle = m >= 4 ? '#ffd24a' : m >= 2 ? '#6fe3ff' : '#9fd';
+      c.fillStyle = m >= 4 ? '#ffd24a' : m >= 2 ? `rgb(${U.accentRGB})` : '#9fd';
       c.fillRect(bx, by, bw * frac, bh);
     }
     /* Round 18: onarim kutusu alininca kisa yesil parlamasi (yalniz cizim). */
@@ -7637,7 +7844,7 @@ Object.assign(Game.prototype, {
     this._uiRoundRect(c, bx, by, bw, bh, 8); c.fill();
     c.strokeStyle = `rgba(${U.accentRGB},0.8)`; c.lineWidth = 1.5;
     this._uiRoundRect(c, bx + 0.75, by + 0.75, bw - 1.5, bh - 1.5, 8); c.stroke();
-    c.fillStyle = '#6fe3ff'; c.font = 'bold 22px monospace';
+    c.fillStyle = `rgb(${U.accentRGB})`; c.font = 'bold 22px monospace';
     c.fillText('DOKUN / SPACE', W / 2, by + 31);
     c.globalAlpha = this.menuFadeT;
     // En yuksek skor: etiket kucuk, SAYI buyuk (asil bilgi sayi)
@@ -7730,7 +7937,7 @@ Object.assign(Game.prototype, {
     c.fillStyle = 'rgba(3,6,12,0.85)';
     c.fillText(title, W / 2 + 2, 242);
     c.shadowColor = `rgba(${accent},0.8)`; c.shadowBlur = 18;
-    c.fillStyle = victory ? U.gold : '#ff5540';
+    c.fillStyle = victory ? U.gold : U.dangerColor;
     c.fillText(title, W / 2, 240);
     c.shadowBlur = 0;
     this._uiRule(c, W / 2, 260, 140, 0.5, accent);

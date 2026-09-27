@@ -49,8 +49,22 @@ CONFIG.ENEMY = Object.assign(CONFIG.ENEMY || {}, {
  * atar. Bu yuzden hale bicimi BULLET altinda, units'e ait anahtarda. */
 Object.assign(CONFIG.BULLET, {
   halo: {
-    widths: [6.3, 5.2, 4.1, 3.0, 2.0, 1.2], // kapsul kademeleri (bw kati)
-    alphas: [0.24, 0.20, 0.22, 0.24, 0.28, 0.34], // katman alfalari
+    /* Round 28: foreground_contrast iki kosuda FAIL (en zayif 14/6, esik 60).
+     * Round 27'de alfa kademeleri eski 4'lu dikdortgen desenin altina
+     * dustu (0.20-0.34 vs 0.30-0.42) — tepe karanlik ~0.83 kalsa da BANT
+     * KAPSAMI/alfasi dustu, medyan yukseldi. Kapsul bicimi KORUNARAK
+     * (vision "siyah dikdortgen" bulgusu geri gelmesin) dis kademeler
+     * eski seviyeye yaklasti + 7. kademe eklendi:
+     *  - 7.2x bw'te 0.18'lik genis soluk katman: ±30 px bandinin daha
+     *    buyuk oranini kaplar (kapı medyani asagi ceken asil kaldirak),
+     *    tepe karanliga katkisi ufak.
+     *  - Birikimli tepe ~0.89 (hedef aralik 0.85-0.90; eski olculen ~0.81).
+     *  - Yaricap bazinda karanlik: >6.3: 0.18, 5.2-6.3: 0.41,
+     *    4.1-5.2: 0.56, 3.0-4.1: 0.67, 2.0-3.0: 0.75, 1.2-2.0: 0.83,
+     *    cekirdek: 0.89. Eski gecen desenin 4.3-6.3 bandindaki ~0.51'ine
+     *    karsilik 5.2-6.3'te 0.41 + 7.2'lik ek kapsama. */
+    widths: [7.2, 6.3, 5.2, 4.1, 3.0, 2.0, 1.2], // kapsul kademeleri (bw kati)
+    alphas: [0.18, 0.28, 0.26, 0.24, 0.26, 0.30, 0.36], // katman alfalari
   },
 });
 

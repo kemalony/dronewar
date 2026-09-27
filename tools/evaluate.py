@@ -243,10 +243,12 @@ def main():
         # Gercek rAF dongusunu baslat: her karede _frame cagir, frameMs topla
         pg.evaluate("""
           window.__perf = [];
+          window.__perfStop = false;
           const g = window.__game.game;
           let lastT = performance.now();
           function perfLoop(t) {
             requestAnimationFrame(perfLoop);
+            if (window.__perfStop) return;
             const raw = t - lastT; lastT = t;
             g._frame(raw);
             window.__perf.push(g.frameMs);
@@ -255,6 +257,14 @@ def main():
         """)
         pg.wait_for_timeout(5200)   # ~300+ kare @60Hz
         perf = pg.evaluate("window.__perf.slice()")
+        # Donguyu DURDUR: buradan sonraki senaryolarda (ekran goruntuleri,
+        # foreground_contrast) sim yalniz manuel tick'lerle ilerlemeli.
+        # Durdurulmazsa rAF dongusu olcum sirasinda da kare atiyor: ekran
+        # goruntusu ile pozisyon okuma arasinda gecen 2-6 karede vy=-800
+        # test mermisi 26-80 px kayiyor, +-6 px'lik tepe penceresi cekirdegi
+        # kaciriyor ve kapi mermi OYUNDA degil TESTTE kaybolmus kirmizi
+        # yaniyordu (round 26'da 221, round 27'de ayni cizimle 5/14).
+        pg.evaluate("window.__perfStop = true")
         pg.evaluate("window.__game.release('fire')")
         pg.evaluate("window.__game.release('right')")
         if len(perf) >= 100:

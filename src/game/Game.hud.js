@@ -728,66 +728,88 @@ Object.assign(Game.prototype, {
     const U = CONFIG.UI;
     c.save();
     c.textAlign = 'left';
+    /* Round 27: sol ust blok once KENDI LEVHASINI cizer (menulerdeki _uiPlate
+       deseni, tam genislik yerine blok genisliginde). Boyut icerikten turetilir:
+       can/sub-dron ikonlarinin sag ucu genisligi, gorunen satir sayisi
+       (KALKAN/ROKET/JAMMER kosullu) yuksekligi belirler. Gologe (_uiHudText)
+       birlikte calisir — levha arka plani durultur, golge harf kenarini. */
+    const HP = U.hudPlate, R = HP.rows;
+    const lives = this.player.lives;
+    const D = CONFIG.DRONES.find((d) => d.id === this.player.droneId) || CONFIG.DRONES[0];
+    const maxLives = Math.max(D.lives, lives);
+    /* Ikonlar: 24/16 px yerine ~1.15x (tam sayi) cizim + tam sayi konum.
+       Kaynak sprite 96 px; 4x kucultme aliasing/pikselli izlenim veriyordu. */
+    const iconS = Math.round(24 * U.hudIconScale);    // 28
+    const subS = Math.round(16 * U.hudIconScale);     // 18
+    const iconY = 46, subY = 51;                      // ikon satiri (isi cubugunun altinda)
+    const subX0 = 14 + maxLives * (iconS + 2) + 8;    // can ikonlarindan SONRA
+    let bottom = R.silah + 8;
+    if (this.shieldT > 0) bottom = R.kalkan + 8;
+    if (this.rocketT > 0) bottom = R.roket + 8;
+    /* Jammer satiri liman bolumunde her zaman yer ayirir; plaka yanip sonerken
+       boyut degistirirse bu kendi basina dikkat dagitir. */
+    if (CONFIG.STAGES[this.stageIdx].ground) bottom = R.jammer + 8;
+    const right = Math.max(12 + HP.heatW, subX0 + CONFIG.SUBDRONE.max * (subS + 2) + 6);
+    this._uiHudPlate(c, HP.x, HP.y, right - HP.x, bottom - HP.y, HP);
     c.font = 'bold 22px monospace';
-    this._uiHudText(c, `SKOR ${this.score}`, 12, 30, '#ffffff');
+    this._uiHudText(c, `SKOR ${this.score}`, 12, R.skor, '#ffffff');
     // can: SECILEN dronun kucultulmus ikonu ile (round 26, F7). Ust sinir
     // CONFIG.PLAYER_LIVES (3) sabitinden degil dronun baslangic canindan
     // turetilir — tank 5 canla basliyor, 4-5. can artik gorunur ve ekran
     // shipselect pip'leriyle (max 5) uyumlu.
-    const lives = this.player.lives;
-    const D = CONFIG.DRONES.find((d) => d.id === this.player.droneId) || CONFIG.DRONES[0];
-    const maxLives = Math.max(D.lives, lives);
     for (let i = 0; i < maxLives; i++) {
-      const lx = 14 + i * 28, ly = 42;
+      const lx = 14 + i * (iconS + 2), ly = iconY;
       if (i < lives) {
-        this.assets.draw(c, D.sprite, lx, ly, 24, 24);
+        this.assets.draw(c, D.sprite, lx, ly, iconS, iconS);
       } else {
         c.globalAlpha = 0.25;
-        this.assets.draw(c, D.sprite, lx, ly, 24, 24);
+        this.assets.draw(c, D.sprite, lx, ly, iconS, iconS);
         c.globalAlpha = 1;
       }
     }
-    // SİLAH seviyesi (round 10). Round 12: hasarda yanip soner (kirmizi)
+    // SİLAH seviyesi (round 10). Round 12: hasarda yanıp soner (kirmizi)
     c.font = 'bold 16px monospace';
     let wcol = this.weaponLevel >= 3 ? '#ffd24a' : `rgb(${U.accentRGB})`;
     if (this.weaponFlashT > 0 && Math.floor(this.weaponFlashT * 8) % 2 === 0) wcol = '#ff5040';
-    this._uiHudText(c, `SİLAH ${this.weaponLevel}`, 12, 76, wcol);
+    this._uiHudText(c, `SİLAH ${this.weaponLevel}`, 12, R.silah, wcol);
     // Kalkan kalan sure (round 10)
     if (this.shieldT > 0) {
       const s = Math.ceil(this.shieldT);
-      this._uiHudText(c, `KALKAN ${s}s`, 12, 96, '#50b4ff');
+      this._uiHudText(c, `KALKAN ${s}s`, 12, R.kalkan, '#50b4ff');
     }
     /* Round 12: roket kalan sure (HUD'da gorunur) */
     if (this.rocketT > 0) {
       const s = Math.ceil(this.rocketT);
-      this._uiHudText(c, `ROKET ${s}s`, 12, 116, '#ff8040');
+      this._uiHudText(c, `ROKET ${s}s`, 12, R.roket, '#ff8040');
     }
     /* Round 13: TEK isisi cubugu — skorun altinda ince bar. AyrI batarya/
        muhimmat gosterici YOK (tek kaynak ilkesi). Asiri sicaklikta kirmizi
        yanip soner; subLaunch basarisizsa kisa uyarı. */
     const H = CONFIG.HEAT;
-    const hbW = 170, hbH = 5, hbX = 12, hbY = 38;
+    const hbW = HP.heatW, hbH = 5, hbX = 12, hbY = 38;
     c.fillStyle = 'rgba(0,0,0,0.45)';
     c.fillRect(hbX - 1, hbY - 1, hbW + 2, hbH + 2);
     let hcol = this.heat < 50 ? '#5fd4e8' : this.heat < 85 ? '#ffd24a' : U.dangerColor;
     if (this.overheated && Math.floor(this.simTimeMs * 0.012) % 2 === 0) hcol = '#ff2010';
     c.fillStyle = hcol;
     c.fillRect(hbX, hbY, hbW * Math.min(1, this.heat / H.max), hbH);
-    // Sub-dron durumu: iki kucuk ikon (sub_drone sprite'i, 16 px)
+    /* Sub-dron durumu: iki kucuk ikon — can ikonlarinin SAGINDA (round 27'ye
+       kadar ayni x bolgesinde ust uste biniyorlardi; denetimde "ikonlar ust
+       uste binmis" olarak tekrar tekrar bildirildi). */
     for (let i = 0; i < CONFIG.SUBDRONE.max; i++) {
-      const sx = 12 + i * 20, sy = 47;
+      const sx = subX0 + i * (subS + 2), sy = subY;
       if (i < this.subDrones) {
-        this.assets.draw(c, 'sub_drone', sx, sy, 16, 16);
+        this.assets.draw(c, 'sub_drone', sx, sy, subS, subS);
       } else {
         c.globalAlpha = 0.22;
-        this.assets.draw(c, 'sub_drone', sx, sy, 16, 16);
+        this.assets.draw(c, 'sub_drone', sx, sy, subS, subS);
         c.globalAlpha = 1;
       }
     }
     // Is yetmezse kisa uyarı (yanıp söner) — round 26 (F11): aynı gölge dili
     if (this.subLaunchFailT > 0 && Math.floor(this.subLaunchFailT * 10) % 2 === 0) {
       c.font = 'bold 11px monospace';
-      this._uiHudText(c, 'ISI YETMİYOR', 12, 74, '#ff5040');
+      this._uiHudText(c, 'ISI YETMİYOR', 12, R.silah - 2, '#ff5040');
     }
     /* Round 16: liman bolumu — jammer menzildeyken glitch/uyari dili.
        Yeni panel acilmaz; mevcut uyarı satirina eklenir. */
@@ -795,16 +817,19 @@ Object.assign(Game.prototype, {
       const blink = Math.floor(this.simTimeMs * 0.008) % 2 === 0;
       if (blink) {
         c.font = 'bold 11px monospace';
-        this._uiHudText(c, 'JAMMER MENZİLİ', 12, 138, '#c080ff');
+        this._uiHudText(c, 'JAMMER MENZİLİ', 12, R.jammer, '#c080ff');
       }
     }
     /* Round 18: kombo carpani — sag ustte kisa rozet + kalan sure cubugu.
        Ekran kalabaliklasmasin diye tek satirlik kompakt bir blok; yeni panel yok.
-       Round 26 (F10+F11): cyan tek kaynaktan (accentRGB), golge ayni dilde. */
+       Round 26 (F10+F11): cyan tek kaynaktan (accentRGB), golge ayni dilde.
+       Round 27: rozet de kendi kucuk levhasini tasiyor (ayni okunurluk olcutu). */
     if (this.comboCount > 0) {
       const m = this.comboMult();
       const C = CONFIG.COMBO;
+      const CP = U.comboPlate;
       const bx = CONFIG.W - 78, by = 14, bw = 64, bh = 5;
+      this._uiHudPlate(c, CONFIG.W - CP.w - 8, CP.y, CP.w, CP.h, CP);
       // rozet metni (x2 gibi)
       c.textAlign = 'right';
       c.font = 'bold 20px monospace';
