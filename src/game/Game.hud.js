@@ -124,7 +124,7 @@ Object.assign(Game.prototype, {
     c.fillText(label, cx - rw / 2, y + 4);
     for (let i = 0; i < max; i++) {
       c.beginPath(); c.arc(bx + 8 + i * 20, y, 5, 0, Math.PI * 2);
-      c.fillStyle = i < val ? '#6fe3ff' : 'rgba(255,255,255,0.13)';
+      c.fillStyle = i < val ? `rgb(${CONFIG.UI.accentRGB})` : 'rgba(255,255,255,0.13)';
       c.fill();
     }
     c.textAlign = 'right';
@@ -161,10 +161,11 @@ Object.assign(Game.prototype, {
     c.beginPath(); c.arc(cx, cy, r * 0.94, 0, Math.PI * 2); c.stroke();
   },
   /* Kaidenin cevresinde donen iki kisa yay — "canli tarama" hissi.
-     Rotor yaylarinin YERINE gecmez: `CONFIG.ROTOR.centers` yalnizca
-     drone_player icin tanimli, yani swift/tank/ghost onizlemesi tamamen
-     olu duruyordu. Bu halka sprite geometrisinden BAGIMSIZ oldugu icin
-     dort dronda da ayni calisir ve govdeye sahte yay cizmez. */
+     Rotor yaylarinin YERINE gecmez: eskiden yalniz falcon'un merkezleri
+     tanimliydi ve diger uc dronun onizlemesinde rotor spin hic cizilmiyordu.
+     Round 26 (F8) ile dort dronun merkezleri de CONFIG.ROTOR.centers'ta;
+     bu halka yine de sprite geometrisinden BAGIMSIZ oldugu icin dort dronda
+     da ayni calisir ve govdeye sahte yay cizmez. */
   _uiScanRing(c, cx, cy, r, speed) {
     const a = performance.now() * 0.0009 * (speed || 1);
     c.save();
@@ -174,6 +175,43 @@ Object.assign(Game.prototype, {
     c.beginPath(); c.arc(cx, cy, r, a, a + Math.PI * 0.32); c.stroke();
     c.beginPath(); c.arc(cx, cy, r, a + Math.PI, a + Math.PI * 1.16); c.stroke();
     c.restore();
+  },
+  /* Oyunici HUD satirinin tek yazi yardimcisi (round 26, F11): once koyu
+     golge (+2 px), ustune renkli metin. SKOR/SİLAH/KALKAN/ROKET zaten bu
+     dili kullaniyordu; ISI YETMİYOR, JAMMER MENZİLİ ve kombo rozeti golgesiz
+     kalmisti — parlak karo ustunde okunurluk ayni olcutu hak eder.
+     Yalnizca cizim; font/align cagiranin kontrolunde kalir. */
+  _uiHudText(c, text, x, y, col) {
+    c.fillStyle = 'rgba(0,0,0,0.35)';
+    c.fillText(text, x + 2, y + 2);
+    c.fillStyle = col;
+    c.fillText(text, x, y);
+  },
+  /* Round 27: oyunici HUD plakasi — menulerin tam genislik _uiPlate'i oyun
+     alaninda KULLANILAMAZ (ekrani karartma yasagi). Bunun yerine metin
+     blokunun arkasina KUCUK, kenarlari yumusayan bir levha cizilir.
+
+     Kenar yumusamasi golge/blur ile DEGIL, edgePasses katmanli roundRect ile
+     yapilir: her katman bir oncekinden `feather/n` kadar tastir ve katman
+     alfasi l = 1-(1-alpha)^(1/n) secilir, boylece CEKIRDEKTE toplam alfa
+     tam olarak `alpha` olur (blur'lu golge cekirdegi tahmin edilemez sekilde
+     inceltir ve canvas golge ofseti olcek donusumunden etkilenir).
+     Yalnizca cizim; tahsis yok (roundRect arcTo ile cizilir). */
+  _uiHudPlate(c, x, y, w, h, o) {
+    const U = CONFIG.UI, P = U.hudPlate;
+    const a = (o && o.alpha != null) ? o.alpha : P.alpha;
+    const n = (o && o.edgePasses) || P.edgePasses;
+    const f = (o && o.feather != null) ? o.feather : P.feather;
+    const r = (o && o.radius != null) ? o.radius : P.radius;
+    if (w <= 0 || h <= 0) return;
+    const d = f / n;
+    const l = 1 - Math.pow(1 - a, 1 / n);
+    for (let i = n; i >= 1; i--) {
+      const e = (i - 0.5) * d;
+      c.fillStyle = `rgba(${U.plateRGB},${l.toFixed(4)})`;
+      this._uiRoundRect(c, x - e, y - e, w + 2 * e, h + 2 * e, r + e);
+      c.fill();
+    }
   },
   /* ====================================================================== */
   /* Round 12: dron secim ekranı. Acik dronlar parlak + badge; kilitliler
@@ -493,7 +531,8 @@ Object.assign(Game.prototype, {
     this._drawRotorWash(c);
     // oyuncu
     this.player.draw(c, this.assets);
-    // oyuncu rotor spin (round 10)
+    // oyuncu rotor spin (round 10) — round 26 (F8): merkezler secilen dronun
+    // sprite'ina gore CONFIG.ROTOR.centers'tan secilir (falcon'a sabit degil)
     {
       const P = CONFIG.PLAYER;
       const s = P.size * 1.1 / 96;   // cizim olcegi (manifest 96)
@@ -501,7 +540,7 @@ Object.assign(Game.prototype, {
       c.save();
       c.translate(this.player.x, this.player.y);
       c.rotate(this.player.tilt);
-      this._drawRotorSpin(c, 'drone_player', 0, 0, s, speedF);
+      this._drawRotorSpin(c, this.player.sprite, 0, 0, s, speedF);
       c.restore();
     }
     // Nisan cercevesi (round 9): en yakin dusmanin uzerinde (yalniz cizim)
@@ -564,9 +603,9 @@ Object.assign(Game.prototype, {
     c.fillRect(x - 2, y - 2, w + 4, h + 4);
     c.fillStyle = 'rgba(120,20,20,0.8)';
     c.fillRect(x, y, w, h);
-    c.fillStyle = '#ff5540';
+    c.fillStyle = CONFIG.UI.dangerColor;
     c.fillRect(x, y, w * frac, h);
-    c.strokeStyle = 'rgba(255,120,90,0.7)';
+    c.strokeStyle = `rgba(${CONFIG.UI.dangerRGB},0.7)`;
     c.lineWidth = 1;
     c.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
     c.restore();
@@ -686,48 +725,42 @@ Object.assign(Game.prototype, {
     this._drawWorld(c, alpha, true);
   },
   _drawHud(c) {
+    const U = CONFIG.UI;
     c.save();
     c.textAlign = 'left';
     c.font = 'bold 22px monospace';
-    c.fillStyle = 'rgba(0,0,0,0.35)';
-    c.fillText(`SKOR ${this.score}`, 14, 32);
-    c.fillStyle = '#ffffff';
-    c.fillText(`SKOR ${this.score}`, 12, 30);
-    // can: drone_player kucultulmus ikonu ile (round 5)
+    this._uiHudText(c, `SKOR ${this.score}`, 12, 30, '#ffffff');
+    // can: SECILEN dronun kucultulmus ikonu ile (round 26, F7). Ust sinir
+    // CONFIG.PLAYER_LIVES (3) sabitinden degil dronun baslangic canindan
+    // turetilir — tank 5 canla basliyor, 4-5. can artik gorunur ve ekran
+    // shipselect pip'leriyle (max 5) uyumlu.
     const lives = this.player.lives;
-    for (let i = 0; i < CONFIG.PLAYER_LIVES; i++) {
+    const D = CONFIG.DRONES.find((d) => d.id === this.player.droneId) || CONFIG.DRONES[0];
+    const maxLives = Math.max(D.lives, lives);
+    for (let i = 0; i < maxLives; i++) {
       const lx = 14 + i * 28, ly = 42;
       if (i < lives) {
-        this.assets.draw(c, 'drone_player', lx, ly, 24, 24);
+        this.assets.draw(c, D.sprite, lx, ly, 24, 24);
       } else {
         c.globalAlpha = 0.25;
-        this.assets.draw(c, 'drone_player', lx, ly, 24, 24);
+        this.assets.draw(c, D.sprite, lx, ly, 24, 24);
         c.globalAlpha = 1;
       }
     }
     // SİLAH seviyesi (round 10). Round 12: hasarda yanip soner (kirmizi)
     c.font = 'bold 16px monospace';
-    c.fillStyle = 'rgba(0,0,0,0.35)';
-    c.fillText(`SİLAH ${this.weaponLevel}`, 14, 78);
-    let wcol = this.weaponLevel >= 3 ? '#ffd24a' : '#6fe3ff';
+    let wcol = this.weaponLevel >= 3 ? '#ffd24a' : `rgb(${U.accentRGB})`;
     if (this.weaponFlashT > 0 && Math.floor(this.weaponFlashT * 8) % 2 === 0) wcol = '#ff5040';
-    c.fillStyle = wcol;
-    c.fillText(`SİLAH ${this.weaponLevel}`, 12, 76);
+    this._uiHudText(c, `SİLAH ${this.weaponLevel}`, 12, 76, wcol);
     // Kalkan kalan sure (round 10)
     if (this.shieldT > 0) {
       const s = Math.ceil(this.shieldT);
-      c.fillStyle = 'rgba(0,0,0,0.35)';
-      c.fillText(`KALKAN ${s}s`, 14, 98);
-      c.fillStyle = '#50b4ff';
-      c.fillText(`KALKAN ${s}s`, 12, 96);
+      this._uiHudText(c, `KALKAN ${s}s`, 12, 96, '#50b4ff');
     }
     /* Round 12: roket kalan sure (HUD'da gorunur) */
     if (this.rocketT > 0) {
       const s = Math.ceil(this.rocketT);
-      c.fillStyle = 'rgba(0,0,0,0.35)';
-      c.fillText(`ROKET ${s}s`, 14, 118);
-      c.fillStyle = '#ff8040';
-      c.fillText(`ROKET ${s}s`, 12, 116);
+      this._uiHudText(c, `ROKET ${s}s`, 12, 116, '#ff8040');
     }
     /* Round 13: TEK isisi cubugu — skorun altinda ince bar. AyrI batarya/
        muhimmat gosterici YOK (tek kaynak ilkesi). Asiri sicaklikta kirmizi
@@ -736,7 +769,7 @@ Object.assign(Game.prototype, {
     const hbW = 170, hbH = 5, hbX = 12, hbY = 38;
     c.fillStyle = 'rgba(0,0,0,0.45)';
     c.fillRect(hbX - 1, hbY - 1, hbW + 2, hbH + 2);
-    let hcol = this.heat < 50 ? '#5fd4e8' : this.heat < 85 ? '#ffd24a' : '#ff5540';
+    let hcol = this.heat < 50 ? '#5fd4e8' : this.heat < 85 ? '#ffd24a' : U.dangerColor;
     if (this.overheated && Math.floor(this.simTimeMs * 0.012) % 2 === 0) hcol = '#ff2010';
     c.fillStyle = hcol;
     c.fillRect(hbX, hbY, hbW * Math.min(1, this.heat / H.max), hbH);
@@ -751,11 +784,10 @@ Object.assign(Game.prototype, {
         c.globalAlpha = 1;
       }
     }
-    // Is yetmezse kisa uyarı (yanıp söner)
+    // Is yetmezse kisa uyarı (yanıp söner) — round 26 (F11): aynı gölge dili
     if (this.subLaunchFailT > 0 && Math.floor(this.subLaunchFailT * 10) % 2 === 0) {
       c.font = 'bold 11px monospace';
-      c.fillStyle = '#ff5040';
-      c.fillText('ISI YETMİYOR', 12, 74);
+      this._uiHudText(c, 'ISI YETMİYOR', 12, 74, '#ff5040');
     }
     /* Round 16: liman bolumu — jammer menzildeyken glitch/uyari dili.
        Yeni panel acilmaz; mevcut uyarı satirina eklenir. */
@@ -763,12 +795,12 @@ Object.assign(Game.prototype, {
       const blink = Math.floor(this.simTimeMs * 0.008) % 2 === 0;
       if (blink) {
         c.font = 'bold 11px monospace';
-        c.fillStyle = '#c080ff';
-        c.fillText('JAMMER MENZİLİ', 12, 138);
+        this._uiHudText(c, 'JAMMER MENZİLİ', 12, 138, '#c080ff');
       }
     }
     /* Round 18: kombo carpani — sag ustte kisa rozet + kalan sure cubugu.
-       Ekran kalabaliklasmasin diye tek satirlik kompakt bir blok; yeni panel yok. */
+       Ekran kalabaliklasmasin diye tek satirlik kompakt bir blok; yeni panel yok.
+       Round 26 (F10+F11): cyan tek kaynaktan (accentRGB), golge ayni dilde. */
     if (this.comboCount > 0) {
       const m = this.comboMult();
       const C = CONFIG.COMBO;
@@ -776,15 +808,13 @@ Object.assign(Game.prototype, {
       // rozet metni (x2 gibi)
       c.textAlign = 'right';
       c.font = 'bold 20px monospace';
-      c.fillStyle = 'rgba(0,0,0,0.4)';
-      c.fillText(`x${m}`, CONFIG.W - 12, 30);
-      c.fillStyle = m >= 4 ? '#ffd24a' : m >= 2 ? '#6fe3ff' : '#ffffff';
-      c.fillText(`x${m}`, CONFIG.W - 14, 28);
+      this._uiHudText(c, `x${m}`, CONFIG.W - 14, 28,
+        m >= 4 ? '#ffd24a' : m >= 2 ? `rgb(${U.accentRGB})` : '#ffffff');
       // kalan sure cubugu (ince)
       const frac = Math.max(0, Math.min(1, this.comboT / (C.windowMs / 1000)));
       c.fillStyle = 'rgba(0,0,0,0.45)';
       c.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-      c.fillStyle = m >= 4 ? '#ffd24a' : m >= 2 ? '#6fe3ff' : '#9fd';
+      c.fillStyle = m >= 4 ? '#ffd24a' : m >= 2 ? `rgb(${U.accentRGB})` : '#9fd';
       c.fillRect(bx, by, bw * frac, bh);
     }
     /* Round 18: onarim kutusu alininca kisa yesil parlamasi (yalniz cizim). */
@@ -872,7 +902,7 @@ Object.assign(Game.prototype, {
     this._uiRoundRect(c, bx, by, bw, bh, 8); c.fill();
     c.strokeStyle = `rgba(${U.accentRGB},0.8)`; c.lineWidth = 1.5;
     this._uiRoundRect(c, bx + 0.75, by + 0.75, bw - 1.5, bh - 1.5, 8); c.stroke();
-    c.fillStyle = '#6fe3ff'; c.font = 'bold 22px monospace';
+    c.fillStyle = `rgb(${U.accentRGB})`; c.font = 'bold 22px monospace';
     c.fillText('DOKUN / SPACE', W / 2, by + 31);
     c.globalAlpha = this.menuFadeT;
     // En yuksek skor: etiket kucuk, SAYI buyuk (asil bilgi sayi)
@@ -965,7 +995,7 @@ Object.assign(Game.prototype, {
     c.fillStyle = 'rgba(3,6,12,0.85)';
     c.fillText(title, W / 2 + 2, 242);
     c.shadowColor = `rgba(${accent},0.8)`; c.shadowBlur = 18;
-    c.fillStyle = victory ? U.gold : '#ff5540';
+    c.fillStyle = victory ? U.gold : U.dangerColor;
     c.fillText(title, W / 2, 240);
     c.shadowBlur = 0;
     this._uiRule(c, W / 2, 260, 140, 0.5, accent);

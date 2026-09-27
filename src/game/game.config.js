@@ -14,8 +14,14 @@ Object.assign(CONFIG.SUBDRONE, {
 /* Isisi: dash/roket/subLaunch maliyetleri CONFIG.HEAT.cost'ta (core).
    Drop olasiligi ise game paketinin sorumlulugudur. */
 CONFIG.HEAT.dropChanceSubdrone = CONFIG.SUBDRONE.dropChance;
+/* Round 26 (F3): pu_shield artik gercekten duser. Sure core'da
+   (CONFIG.WEAPON.shieldMs); dusme olasiligi game paketinin sorumlulugunda.
+   YENI ust duzey anahtar (SHIELD) — `|| {}` ile genisletiliyor. */
+CONFIG.SHIELD = Object.assign(CONFIG.SHIELD || {}, {
+  dropChance: 0.06,          // dusman olumunde %6 (LCG) — weapon/rocket'in yani
+});
 /* Round 15: cok asamali tasici boss — govde olum sekansinin sayilari.
-   core/CONFIG.CARRIER'e EZMEZ, genisletir (AGENTS.md kurali). */
+    core/CONFIG.CARRIER'e EZMEZ, genisletir (AGENTS.md kurali). */
 Object.assign(CONFIG.CARRIER, {
   deathExplosions: 8,     // govde olumunde patlama sayisi
   deathWindowMs: 600,     // ...bu sure icinde esit araliklarla
@@ -69,6 +75,11 @@ CONFIG.FEEDBACK = Object.assign(CONFIG.FEEDBACK || {}, {
 CONFIG.UI = Object.assign(CONFIG.UI || {}, {
   plateRGB: '4,7,14',        // levha rengi (gece mavisi-siyah)
   accentRGB: '110,235,255',  // cyan vurgu — oyunun mermi/HUD dili
+  /* Round 26 (F13): tehlike kirmizisi — tek kaynak. Boss can cubugu, isi
+     cubugu ve akraba cizimler buradan okur; '#ff5540' literali dagitilmasin.
+     (units paketindeki Carrier kendi turunda baglanacak — game tarafı burada.) */
+  dangerColor: '#ff5540',
+  dangerRGB: '255,85,64',
   gold: '#ffd24a',
   muted: 'rgba(150,166,184,0.9)',
   plateFeather: 46,          // levhanin ust/alt yumusama payi (px)
@@ -83,6 +94,26 @@ CONFIG.UI = Object.assign(CONFIG.UI || {}, {
   endPlate:   { y0: 160, y1: 580, a: 0.68 },
   pauseDim: 0.50,            // duraklatmada oyun alaninin karartmasi
   tipPlate: { y0: 770, y1: 792, a: 0.55 },   // oyun ici ipucu satiri
+  /* Round 27: OYUN ICi HUD'un kendi levhasi. Menulerdeki _uiPlate tam
+     genisliktir; HUD'da bu YASAK olurdu — oyun alanini karartmak sarsinti/
+     vinyet yasaginin ruhuna aykiri. Bunun yerine HUD metinlerinin ARKASINA
+     KUCUK, koseleri yumusayan bir plaka cekilir (gate_ui.py olcum bandina
+     aynı mantik: yazinin arkasindaki medyan <= 45).
+     Sizinti = (1 - alpha): 0.62 secildi — parlak karo medyani ~53 olsa bile
+     0.38 * 53 + levha (~5) ~ 25'e iner; alfa daha yukari cikarsa ekran
+     karartma hissi baslar. Kenar yumusamasi edgePasses katmanli roundRect
+     ile yapilir (toplam alfa cekirdekte tam olarak alpha). */
+  hudPlate: {
+    x: 6, y: 8,              // sol ust blokun cekirdek sol/ust kenari
+    heatW: 170,              // isi cubugu genisligi (genisligin alt siniri)
+    alpha: 0.62, feather: 16, edgePasses: 5, radius: 10,
+    rows: { skor: 30, silah: 80, kalkan: 100, roket: 120, jammer: 138 },
+  },
+  /* Sag ust kombo rozeti — ayni desen, daha kucuk ve daha soluk. */
+  comboPlate: { y: 6, w: 94, h: 30, alpha: 0.55, feather: 12, edgePasses: 4, radius: 9 },
+  /* HUD ikonlari: 24/16 px cizim 96 px kaynak sprite'i ~4x kucultuyordu;
+     pikselli izlenim buradan. Hafif buyutme + tam sayi hizalama. */
+  hudIconScale: 1.15,
 });
 /* Menude gosterilen bolum katalogu — STAGES'ten TURETILIR ki bolum eklenince
    kendiliginden guncellensin (elle yazilan liste bir kez bayatladi). */

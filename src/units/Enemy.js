@@ -131,10 +131,22 @@ class Enemy {
     const s = this.radius * 2;
     c.save();
     c.translate(this.x, this.y);
-    // --- govde sprite'i
+    // --- yumuşak koyu hale (yalnızca çizim; sim'e dokunmaz). Oyuncu halesi
+    //     deseni (Player.js): radyal gradeyan, rgba kademeleri config'ten.
+    //     Neden: yeşil scout / cyan tonlu tipler parlak şehir karosu ve liman
+    //     suyu üstünde kaynaşıyordu (mimo: _gnd_a ve shot_2, öncelik 4).
+    //     Hale sprite'ın TAŞINA kadar geniş ve yumuşak kenarlı — "gövde
+    //     çevresinde daire" hissi vermez. Kenar ışığı ayrıcadır (aşağıda).
+    const HAL = CONFIG.ENEMY.halo;
+    const haloR = s * HAL.radiusMul;
+    const halo = c.createRadialGradient(0, 0, s * HAL.innerMul, 0, 0, haloR);
+    for (let i = 0; i < HAL.pos.length; i++) halo.addColorStop(HAL.pos[i], HAL.col[i]);
+    c.fillStyle = halo;
+    c.beginPath(); c.arc(0, 0, haloR, 0, Math.PI * 2); c.fill();
+    // --- gövde sprite'i
     assets.draw(c, this.sprite, -s/2, -s/2, s, s);
-    // --- tip ayrimi: kenar isigi (yalnizca bu dronun rengi; hale YOK —
-    //     oyuncu tek "hale"li birim kalir)
+    // --- tip ayrimi: kenar isigi (halenin ustune additive vurur; oyuncudaki
+    //     cyan kenar isigi deseninin dusman renkli karsiligi)
     c.globalCompositeOperation = 'lighter';
     if (this.type === 'scout') {
       // soğuk gri govde uzerine ince KIRMIZI kenar isigi
@@ -185,7 +197,7 @@ class Enemy {
       c.setLineDash([6, 6]);
       c.beginPath();
       c.moveTo(0, s * 0.3);
-      c.lineTo(this.lockX - this.x, 620 - this.y);   // oyuncu y'si ~620
+      c.lineTo(this.lockX - this.x, CONFIG.H - this.y);
       c.stroke();
       c.setLineDash([]);
       c.globalCompositeOperation = 'source-over';

@@ -1,6 +1,16 @@
 # DRONE WAR — Durum
 
-## Tur: 25 (tamamlandı — web 68 PASS / 1 FAIL; tek FAIL vision_polish = ulaşılamayan LAN API)
+## Tur: 26 (tamamlandı — web 69 PASS / 0 FAIL; vision_polish düzeldi)
+
+## Tur 26 — vision API değişimi
+- **Tek FAIL'in sebebi erişimdi, oyun değildi:** `qwen_agent.py`'nin vision çağrısı
+  LAN adresine (`http://10.106.233.184:8002/v1`) gidiyordu. Artık varsayılan
+  **Evren API** (`https://evren-llmapi.ssyz.org.tr/v1`, model `gemma-4-31b`,
+  Bearer anahtar `.env`'den). `qwen_agent.look()` imzası değişmedi; `evaluate.py`
+  dokunulmadı. `QWEN_VISION_API` ortam değişkeni verilirse eski LAN servisi
+  (ve `enable_thinking` kapatması) yine kullanılır.
+- Sonuç: `vision_polish` scores=[8,9,9,9,8] medyan=9.0 blocking=0 — **69/69**.
+  Kalan listesindeki "vision polish" maddesi kapandı.
 
 ## Tamamlanan
 - **Motor:** Sabit adım sim (120Hz akümülatör), Clock, Input, Assets, Renderer, Pool, Player, Bullet, Enemy, Boss, Game
@@ -98,7 +108,7 @@
   Kapı: `tools/gate_sfx.py` 7/7.
 
 ## Kalan / Sonraki Turlar
-- **Vision polish (Round 13+):** min_score=7 (hedef 8), blocking değişken (hedef 0).
+- ~~Vision polish~~ (Round 26'da kapandı: medyan 9.0, blocking 0, 69/69).
 - **Cila (Round 13+):** Değerlendirici bulgularıyla ince ayar.
 
 ## Orkestratör Notları — Geri Alma

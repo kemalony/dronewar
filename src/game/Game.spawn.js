@@ -463,17 +463,25 @@ Object.assign(Game.prototype, {
     this._puSeed = (Math.imul(this._puSeed, 1664525) + 1013904223) >>> 0;
     return this._puSeed / 4294967296;
   },
-  /* Dusman olumunda %12 pu_weapon, %8 pu_rocket, %6 pu_subdrone, %5 pu_repair
-     duser (tek LCG'den art arda — Math.random YOK). Round 18: onarim kutusu. */
+  /* Dusman olumunda %12 pu_weapon, %8 pu_rocket, %6 pu_shield, %6 pu_subdrone,
+     %5 pu_repair duser (tek LCG'den art arda — Math.random YOK).
+     Round 18: onarim kutusu. Round 26 (F3): shield dali — HUD'daki KALKAN
+     satiri gerceklesir. Zincirin sekli degittigi icin LCG akisi/sim ciktisi
+     bilincli olarak farkli akar (altin iz sonradan senkronlanir). */
   _maybeDropPowerup(x, y) {
     const r = this._puLcg();
-    if (r < CONFIG.WEAPON.dropChance) {
+    const cW = CONFIG.WEAPON.dropChance, cR = CONFIG.ROCKET.dropChance;
+    const cS = CONFIG.SHIELD.dropChance;
+    const cD = CONFIG.HEAT.dropChanceSubdrone, cP = CONFIG.REPAIR.dropChance;
+    if (r < cW) {
       this.powerups.push({ type: 'weapon', x, y, active: true });
-    } else if (r < CONFIG.WEAPON.dropChance + CONFIG.ROCKET.dropChance) {
+    } else if (r < cW + cR) {
       this.powerups.push({ type: 'rocket', x, y, active: true });
-    } else if (r < CONFIG.WEAPON.dropChance + CONFIG.ROCKET.dropChance + CONFIG.HEAT.dropChanceSubdrone) {
+    } else if (r < cW + cR + cS) {
+      this.powerups.push({ type: 'shield', x, y, active: true });
+    } else if (r < cW + cR + cS + cD) {
       this.powerups.push({ type: 'subdrone', x, y, active: true });
-    } else if (r < CONFIG.WEAPON.dropChance + CONFIG.ROCKET.dropChance + CONFIG.HEAT.dropChanceSubdrone + CONFIG.REPAIR.dropChance) {
+    } else if (r < cW + cR + cS + cD + cP) {
       this.powerups.push({ type: 'repair', x, y, active: true });
     }
   },

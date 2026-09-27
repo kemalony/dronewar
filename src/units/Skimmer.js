@@ -72,6 +72,16 @@ class Skimmer {
     const S = CONFIG.SKIMMER;
     c.save();
     c.translate(this.x, this.y);
+    /* Yumuşak koyu hale — hafifletilmiş sürüm (CONFIG.ENEMY.haloLight).
+       Liman sahnesinde suüstü gemileriyle ton çakışmasını keser; dairesel
+       simetrik olduğu için rotasyondan BAĞIMSIZ, transform öncesi çizilir.
+       Yalnızca çizim — sim/hitbox etkisi yok. */
+    const HAL = CONFIG.ENEMY.haloLight;
+    const haloR = Math.max(S.w, S.h) * HAL.radiusMul;
+    const halo = c.createRadialGradient(0, 0, Math.max(S.w, S.h) * HAL.innerMul, 0, 0, haloR);
+    for (let i = 0; i < HAL.pos.length; i++) halo.addColorStop(HAL.pos[i], HAL.col[i]);
+    c.fillStyle = halo;
+    c.beginPath(); c.arc(0, 0, haloR, 0, Math.PI * 2); c.fill();
     /* Yatay ucus: govde gidis yonune 90° cevrilir, yon bayragina gore aynalanir. */
     c.rotate(this.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
     const w = S.h, h = S.w;            // dondurulmus cerceve

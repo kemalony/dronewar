@@ -12,13 +12,13 @@ class Spark {
     this.maxLife = this.life;
     // renk kovasi: 0 = turuncu, 1 = saribeyaz
     this.colorBin = rnd() < 0.6 ? 0 : 1;
-    this.size = 1.5 + rnd() * 1.5;
+    this.size = CONFIG.FX.spark.sizeMin + rnd() * (CONFIG.FX.spark.sizeMax - CONFIG.FX.spark.sizeMin);
     this.active = true;
   }
   update(dt) {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
-    this.vy += 120 * dt;   // hafif yercekbim
+    this.vy += CONFIG.FX.spark.gravity * dt;   // hafif yercekbim
     this.life -= dt;
     if (this.life <= 0) this.active = false;
   }

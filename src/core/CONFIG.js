@@ -197,16 +197,28 @@ const CONFIG = {
     speedBoost: 0.30,          // oyuncu hizlandikca %30'a kadar artis
     blurAlpha: 0.15,           // rotor altindaki bulaniklik halkasi (<= 0.18)
     /* Rotor merkezleri sprite geometrisine gore (sprite koordinatlari, merkezden).
-       Oyuncu 4 kose, scout 4, gunner 6, shield 8, boss 2 buyuk halka. */
+       Oyuncu 4 kose, scout 4, gunner 6, shield 8, boss 2 buyuk halka.
+       Oynanis dronlari (round 26, F8): falcon'un dogrulanmis +-30,+-30 merkezleri
+       referans alindi; swift/tank/ghost merkezleri sprite PNG alfa geometrisinden
+       cikarildi (gorunur piksel yumaklari + parlak rotor diskleri, 96-birim
+       cizim tabani — tum dronlar kare cizildigi icin x ekseni 96/genislik ile
+       olceklenir; tank 208 px genisliginde bu nedenle daralir).
+       Cember-cevre gorunurluk orani (falcon referansi 0.24-0.42):
+       swift 0.16-0.25 (ince pervaneler), tank 0.72 (belirgin kanal halkalari),
+       ghost 0.27. Overlay araci ince pervanelerde dusuk oran verir — bilincli. */
     centers: {
       drone_player: [[-30,-30],[30,-30],[-30,30],[30,30]],
+      drone_swift:  [[-39,-21],[39,-21],[-39,21],[39,21],[-21,-40],[21,-40],[-20,39],[20,39]],
+      drone_tank:   [[-34,-33],[34,-33],[-34,33],[34,33]],
+      drone_ghost:  [[-17,-38],[17,-38],[-38,16],[38,16]],
       drone_scout:  [[-18,-18],[18,-18],[-18,18],[18,18]],
       drone_gunner: [[-28,-22],[0,-26],[28,-22],[-28,22],[0,26],[28,22]],
       drone_shield: [[-30,-30],[0,-34],[30,-30],[30,0],[30,30],[0,34],[-30,30],[-30,0]],
       boss_gunship: [[-70,0],[70,0]],
     },
     radii: {
-      drone_player: 22, drone_scout: 15, drone_gunner: 17, drone_shield: 20,
+      drone_player: 22, drone_swift: 10, drone_tank: 12, drone_ghost: 7,
+      drone_scout: 15, drone_gunner: 17, drone_shield: 20,
       boss_gunship: 58,   // buyuk halka -> daha yavas doner
     },
     /* Boss rotorlari (round 11): her boss icin merkezler + IC yaricaplar

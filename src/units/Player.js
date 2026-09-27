@@ -38,6 +38,7 @@ class Player {
     const s = this.subs.acquire();
     if (!s) return false;
     s.reset(this.x, this.y);
+    s._side = this._subSide[this.subs.count() - 1] || 1;
     s.mode = 'gun';
     return true;
   }
@@ -54,24 +55,6 @@ class Player {
     return true;
   }
   get dashActive() { return this.dashT > 0; }
-  /* Sub-drone firlat: en yakin aktif dusmana kamikaze modunda git.
-     Is harcar; overheated iken calismaz. */
-  launchSub(game) {
-    if (game.overheated) return false;
-    const target = game._nearestEnemy();
-    if (!target) return false;
-    // En az aktif sub-dronu sec (varsa), yoksa havuzdan al
-    let sub = null;
-    this.subs.forEach((s) => { if (!sub && s.mode === 'gun') sub = s; });
-    if (!sub) {
-      sub = this.subs.acquire();
-      if (!sub) return false;   // havuz dolu
-      sub.reset(this.x, this.y);
-    }
-    game._addHeat(CONFIG.HEAT.cost.subLaunch);
-    sub.launch(target);
-    return true;
-  }
   /* Hitbox yaricapi (tank %15 buyuk). */
   hitR() { return CONFIG.PLAYER.half * this._hitboxMul; }
   takeHit() {
@@ -126,11 +109,6 @@ class Player {
        Is soneumu Game._simStep yapar (tek kaynak game.heat). */
     const dashDir = input.consumeDash();
     if (dashDir) this.dash(dashDir.x, dashDir.y, game);
-    /* Sub-drone firlatma: input._subLaunchQueued bayragi */
-    if (input._subLaunchQueued) {
-      input._subLaunchQueued = false;
-      this.launchSub(game);
-    }
     const DASH = CONFIG.PLAYER.DASH;
     /* acro-dash: sim zamanina bagli 3x hamle. Dash sirasinda normal hareket
        devre disi kalir; iz noktasi her adimda en eski slotun uzerine yazilir. */
@@ -187,7 +165,7 @@ class Player {
          Tek kaynak game.fireSlowMul; Game._computeFireMods her sim adiminda
          hesaplar ve iki jammer ayni anda etkiliyse carpan bir kez uygulanir. */
       if (game.fireSlowMul && game.fireSlowMul < 1) interval /= game.fireSlowMul;
-      this.fireTimer = this.poolSize || interval;
+      this.fireTimer = interval;
       this.muzzle = CONFIG.FIRE.muzzleMs / 1000;
       const offsets = lv.count === 1 ? [0] :
                       lv.count === 2 ? [-lv.offset, lv.offset] :
@@ -204,7 +182,7 @@ class Player {
     }
     if (this.muzzle > 0) this.muzzle -= dt;
     if (this.invincible > 0) this.invincible -= dt;
-    /* Sub-dronlar: takip + ates / kamikaze ilerleme */
+    /* Sub-dronlar: takip + ates */
     this.subs.forEach((s) => s.update(dt, game));
   }
   draw(ctx, assets) {

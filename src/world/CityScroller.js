@@ -85,18 +85,21 @@ class CityScroller {
     if (this.landmarkShown || !this.landmark) return;
     this.landmarkShown = true;
   }
+  /* NOT: bina katmani CIZILMEZ — "ucusan binalar" duzeltmesinde cizim
+     sahneden kaldirildi. Bu uretim yalnizca buildingsOnScreen test kancasini
+     (Game.state -> tools/evaluate.py) besler; sim/carpisma okumaz. */
   _ensureBuilt() {
     const SPACING = 260;                       // bina araligi (px)
     const H = CONFIG.H;
     const maxSlot = Math.floor((this.dist + H) / SPACING);
+    if (this.builtUpTo >= maxSlot) return;     // yeni slot yok -> tarama yok
     while (this.builtUpTo < maxSlot) {
       this.builtUpTo++;
       this._spawnAt(this.builtUpTo, SPACING);
     }
-    // ekrandan coktan cikmis binasi at
+    // ekrandan coktan cikmis binasi at (yalnızca spawn olan adımda)
     const minY = this.dist - H;                // y < minY -> ekranin ustunde
     this.buildingsList = this.buildingsList.filter((b) => b.y > minY - 400);
-    if (!this.buildingsList.length) this.buildingsList = [];
   }
   _spawnAt(slot, spacing) {
     // LCG: her slot icin deterministik tohum (Math.random YOK)

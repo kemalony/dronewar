@@ -2,14 +2,63 @@
  *
  * Neden ayri dosya: src/core/CONFIG.js yalnizca core ajaninindir.
  * build_order.json icinde core/CONFIG.js'ten SONRA siralanir.            */
+/* Dusman halesi (yalnizca cizim): yeşil scout / cyan tonlu tipler parlak
+ * sehir karosu ve liman suyu ustunde ayrismiyordu (mimo denetimi, _gnd_a/shot_2,
+ * oncelik 4). Cozum oyuncunun halesi deseni (Player.js): govdenin altina
+ * carpimsal koyu radyal hale — sim'e dokunmaz, hitbox degismez.
+ *
+ * radiusMul: cizim kutusunun (s = radius*2) kaci kati — sprite'in TASINA
+ * kadar uzanir (oyuncu temas golgesi kurali: tasma olmali).
+ * pos/col: Player.js'teki rgba kademe deseninin config'li hali.
+ * haloLight: Skimmer icin hafifletilmis surum (liman sahnesi, yandan giris).
+ *
+ * Dikkat: `CONFIG.ENEMY = {...}` YAZMA — burada yeni anahtar aciliyor ama
+ * desen olarak Object.assign korunsun; baska paket alan eklerse ezilmez. */
+CONFIG.ENEMY = Object.assign(CONFIG.ENEMY || {}, {
+  halo: {
+    radiusMul: 1.05,       // hale yaricapi = cizim kutusu x 1.05 (tasma var)
+    innerMul: 0.15,        // ic baslangic yaricapi (gradeyanin ic cukuru)
+    pos: [0, 0.45, 0.75, 1],
+    col: ['rgba(3,6,12,0.55)', 'rgba(3,6,12,0.34)',
+          'rgba(3,6,12,0.14)', 'rgba(3,6,12,0)'],
+  },
+  haloLight: {
+    radiusMul: 1.0,
+    innerMul: 0.15,
+    pos: [0, 0.45, 0.75, 1],
+    col: ['rgba(3,6,12,0.40)', 'rgba(3,6,12,0.22)',
+          'rgba(3,6,12,0.09)', 'rgba(3,6,12,0)'],
+  },
+});
+
+/* Mermi kontrast halesinin BICIMI (yalnizca cizim, Bullet.drawPool).
+ *
+ * Round 21'de hale 4 kademeli DIKDORTGEN fillRect'ti; vision denetimi üç
+ * karede tekrarladi: "harmanlanmamis siyah dikdortgen golgeler, kenarlar
+ * cok keskin" (shot_1/shot_3/_contrast, P2-3). Cozum bicim degisikligi:
+ * her kademeyi round-cap cizgi (kapsul) olarak cizmek — ucler yuvarlanir,
+ * yatayda 6 ince kademeli katman kenar bantlanmasini eritir.
+ *
+ * widths: CONFIG.BULLET.w'nin kati (carpisma kutusuna dokunmaz).
+ * alphas: katman basina carpimsal siyah alfa; birikimli tepe karanlik
+ * ~0.83 — eski 4 kademeli desene (~0.81) gore ALTIN DEGIL, ustu.
+ * foreground_contrast kapisinin 60 esigine ayni marjla hizmet eder.
+ *
+ * Dikkat: CONFIG.FX.tracer'a buradan anahtar EKLENMEZ — fx.config.js
+ * build sirasinda bundan sonra calisir ve tracer nesnesini komple
+ * atar. Bu yuzden hale bicimi BULLET altinda, units'e ait anahtarda. */
+Object.assign(CONFIG.BULLET, {
+  halo: {
+    widths: [6.3, 5.2, 4.1, 3.0, 2.0, 1.2], // kapsul kademeleri (bw kati)
+    alphas: [0.24, 0.20, 0.22, 0.24, 0.28, 0.34], // katman alfalari
+  },
+});
+
 CONFIG.SUBDRONE = Object.assign(CONFIG.SUBDRONE || {}, {
   pool: 2,                // havuz boyutu (2 mini refakatci)
   offset: 34,             // oyuncunun yanindaki mesafe (px)
   followSmooth: 10,       // yumusak gecikme (1/s) — kritik sonumlu yaklasim
   fireIntervalMs: 190,    // namlu modu ates araligi
-  damage: 1,              // namlu modu hasari
-  kamikazeSpeed: 620,     // px/s — kamikaze modunda hiza
-  kamikazeDamage: 6,      // carpisma hasari
   size: 48,               // cizim boyutu (manifest sub_drone 48x48)
 });
 /* Jammer dronu: ateş ETMEZ; ekranda kaldigi surece oyuncuyu zayiflatir.

@@ -14,6 +14,7 @@ class FallingWreck {
     this.vy = W.startVy;                             // baslangicta hafif asagi itki
     this.size = 48;                                  // cizim boyutu (manifest taban ~64)
     this._smokeAcc = 0;                              // duman izi biriktirici (s)
+    this._rnd = rnd;                                 // duman boyut varyasyonu icin LCG akisi
     this.active = true;
   }
   update(dt, fx) {
@@ -38,7 +39,7 @@ class FallingWreck {
       this._smokeAcc -= W.smokeEvery;
       const p = fx.smoke.acquire();
       if (!p) break;
-      p.spawn(this.x + Math.sin(this.ang) * 10, this.y - 14, W.smokeLife);
+      p.spawn(this.x + Math.sin(this.ang) * 10, this.y - 14, W.smokeLife, this._rnd);
     }
   }
   draw(c, assets) {

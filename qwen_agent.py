@@ -17,9 +17,33 @@ import time
 import urllib.error
 import urllib.request
 
+def _load_env() -> None:
+    """Kök dizindeki .env dosyasını okur (mevcut ortam değişkenine DOKUNMAZ)."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                os.environ.setdefault(k.strip(), v.strip())
+    except OSError:
+        pass
+
+
+_load_env()
+
 IMAGE_API = os.environ.get("QWEN_IMAGE_API", "http://10.40.72.31:30437")
-VISION_API = os.environ.get("QWEN_VISION_API", "http://10.106.233.184:8002/v1")
-VISION_MODEL = os.environ.get("QWEN_VISION_MODEL", "qwen3.6-35b-a3b-nvfp4")
+# Vision (LAN servisi çoğu ortamdan erişilemez): varsayılan Evren API + gemma-4-31b.
+# docs/samples.md — "görsel" örneği: /v1/chat/completions, image_url base64.
+EVREN_API_KEY = (os.environ.get("EVREN_API_KEY")
+                 or os.environ.get("OPENAI_API_KEY")
+                 or os.environ.get("api_key"))
+EVREN_VISION_URL = "https://evren-llmapi.ssyz.org.tr/v1"
+EVREN_VISION_MODEL = "gemma-4-31b"
+VISION_API = os.environ.get("QWEN_VISION_API", EVREN_VISION_URL)
+VISION_MODEL = os.environ.get("QWEN_VISION_MODEL", EVREN_VISION_MODEL)
 
 TIMEOUT = 600
 RETRIES = 4
@@ -143,8 +167,14 @@ def edit(
 
 # ------------------------------------------------------------------ görü
 
-def look(images: bytes | str | list, question: str, *, max_tokens: int = 1024) -> str:
-    """Görsel(ler) hakkında serbest soru sorar. En fazla 8 görsel."""
+def look(images: bytes | str | list, question: str, *, max_tokens: int = 1024,
+         model: str | None = None) -> str:
+    """Görsel(ler) hakkında serbest soru sorar. En fazla 8 görsel.
+
+    model: None -> VISION_MODEL (varsayılan gemma-4-31b). "mimo-v2.6-pro" gibi
+    reasoning'li modellerde max_tokens >= 1500 ver; aksi halde reasoning
+    bütçeyi yiyip content=None döner.
+    """
     items = images if isinstance(images, list) else [images]
     if len(items) > 8:
         raise ValueError("En fazla 8 görsel")
@@ -154,17 +184,29 @@ def look(images: bytes | str | list, question: str, *, max_tokens: int = 1024) -
         for im in items
     ]
     content.append({"type": "text", "text": question})
-    d = _post(
-        f"{VISION_API}/chat/completions",
-        {
-            "model": VISION_MODEL,
-            "messages": [{"role": "user", "content": content}],
-            "max_tokens": max_tokens,
-            # Zorunlu: thinking açık kalırsa content boş döner.
-            "chat_template_kwargs": {"enable_thinking": False},
-        },
-    )
-    return (d["choices"][0]["message"]["content"] or "").strip()
+    payload = {
+        "model": model or VISION_MODEL,
+        "messages": [{"role": "user", "content": content}],
+        "max_tokens": max_tokens,
+    }
+    headers = None
+    if VISION_API.startswith("https://"):
+        # Evren (OpenAI uyumlu) uç noktası: Bearer zorunlu.
+        if not EVREN_API_KEY:
+            raise QwenError("EVREN_API_KEY yok (.env ya da ortam değişkeni)")
+        headers = {"Authorization": f"Bearer {EVREN_API_KEY}"}
+    else:
+        # LAN qwen servisi: thinking açık kalırsa content boş döner.
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
+    d = _post(f"{VISION_API}/chat/completions", payload, headers=headers)
+    msg = d["choices"][0]["message"]
+    # Reasoning'li modeller (mimo) max_tokens yetmezse content=None doner:
+    # bos string degil acik hata firlat ki cagiran taraf retry edebilsin.
+    if msg.get("content") is None:
+        raise QwenError(
+            f"vision content bos (model={payload['model']}, max_tokens={max_tokens} "
+            "yetersiz olabilir; 1500+ dene)")
+    return (msg["content"] or "").strip()
 
 
 def verify(image: bytes | str, brief: str) -> dict:

@@ -23,24 +23,32 @@ class Bullet {
    Bir havuzun TAMAMINI tek gecişte cizer. Cagrilma yeri: Game._drawBullets.
    Donen deger iz uzunlugu (L) — cagiran `this.tracerLen` kancasina yazar.
 
-   Katman sirasi (hepsi renk+alfa kovasina gore gruplu, sicak dongude tahsis
-   YOK — eski kodun mermi basina createRadialGradient'i kaldirildi):
-     1) koyu kontrast halesi  — genisten dara 4 kademe, siyah + alfa
-     2) koyu iz (trail)       — merminin arkasinda kisa sonen hat
-     3) yumusak additif parlama + cyan/beyaz cekirdek  ('lighter')
-     4) uc parlamasi          — iki additif yay (gradyan yok)
+    Katman sirasi (hepsi renk+alfa kovasina gore gruplu, sicak dongude tahsis
+    YOK — eski kodun mermi basina createRadialGradient'i kaldirildi):
+      1) koyu kontrast halesi  — KAPSUL: 6 kademe round-cap cizgi (r27)
+      2) koyu iz (trail)       — merminin arkasinda kisa sonen hat
+      3) yumusak additif parlama + cyan/beyaz cekirdek  ('lighter')
+      4) uc parlamasi          — iki additif yay (gradyan yok)
 
-   Neden hale: `foreground_contrast` tepe - medyan olcer; 'lighter' cekirdek
-   her zeminde 255'e doyar, yani tepe yukseltilemez. Parlak bulut bandin
-   medyanini ~230'a cikarinca fark 25'e duser (beyaz iz beyaz bulutta gercekten
-   kaybolur). Siyah + alfa carpimsaldir: koyu sehirde gorunmez, parlak zeminde
-   mermiye kendi cercevesini verir ve bandin medyanini asagi ceker. Arka plan
-   karartilmaz — hale mermiye aittir ve mermiyle birlikte hareket eder.
+    Neden hale: `foreground_contrast` tepe - medyan olcer; 'lighter' cekirdek
+    her zeminde 255'e doyar, yani tepe yukseltilemez. Parlak bulut bandin
+    medyanini ~230'a cikarinca fark 25'e duser (beyaz iz beyaz bulutta gercekten
+    kaybolur). Siyah + alfa carpimsaldir: koyu sehirde gorunmez, parlak zeminde
+    mermiye kendi cercevesini verir ve bandin medyanini asagi ceker. Arka plan
+    karartilmaz — hale mermiye aittir ve mermiyle birlikte hareket eder.
 
-   Cizim/sim ayrimi: burada sim durumu OKUNUR, hicbiri yazilmaz; carpisma
-   dikdortgeni degismez (genislikler CONFIG.BULLET.w'nin katidir).          */
+    Neden kapsul (Round 27): dikdortgen fillRect'in keskin koseleri vision
+    denetiminde u kez "harmanlanmamis siyah dikdortgen" olarak bildirildi.
+    Kademeler artik lineCap='round' cizgi — uc formu tracer uzunluguyla
+    uyumlu kapsul, yatayda 6 ince kademe kenar bandini eritir. Genislikler
+    ve birikimli tepe karanlik (~0.83) eski desenle ayni buyuklukte;
+    kapinin 60 esigine ayni marjla hizmet eder.
+
+    Cizim/sim ayrimi: burada sim durumu OKUNUR, hicbiri yazilmaz; carpisma
+    dikdortgeni degismez (genislikler CONFIG.BULLET.w'nin katidir).          */
 Bullet.drawPool = function (c, pool, isEnemy) {
   const T = CONFIG.FX.tracer;
+  const H = CONFIG.BULLET.halo;
   const L = T.len, half = L * 0.5;
   const bw = CONFIG.BULLET.w;          // tek boyut kaynagi (carpisma ile ayni)
   const TAU = Math.PI * 2;
@@ -49,14 +57,16 @@ Bullet.drawPool = function (c, pool, isEnemy) {
   const inner = isEnemy ? 'rgba(255,220,180,0.95)' : 'rgba(255,255,255,0.95)';
   c.save();
   // --- 1) KOYU KONTRAST HALESI (source-over siyah = carpim)
-  c.lineCap = 'butt';
-  c.fillStyle = '#000';
-  for (let i = 0; i < T.haloW.length; i++) {
-    const w = bw * T.haloW[i];
-    c.globalAlpha = T.haloA[i];
+  // Kapsul: her kademe round-cap cizgi, kademe basina tek stroke (gruplu).
+  // Ucler yuvarlanir, yataydaki 6 ince alfa kademesi kenar bantlanmasini eritir.
+  c.lineCap = 'round';
+  c.strokeStyle = '#000';
+  for (let i = 0; i < H.widths.length; i++) {
+    c.globalAlpha = H.alphas[i];
+    c.lineWidth = bw * H.widths[i];
     c.beginPath();
-    pool.forEach((b) => { c.rect(b.x - w * 0.5, b.y - half, w, L); });
-    c.fill();
+    pool.forEach((b) => { c.moveTo(b.x, b.y + half); c.lineTo(b.x, b.y - half); });
+    c.stroke();
   }
   // --- 2) KOYU IZ: merminin arkasinda hizla sonen kisa hat
   c.lineCap = 'round';

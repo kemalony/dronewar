@@ -55,6 +55,47 @@ Object.assign(CONFIG.FX, {
     fontSize: 15,    // bold monospace punto
   },
 });
+/* Round 24 (F12): efekt siniflarindan tasinan gorsel sabitler — degerler
+   degismedi, yalnizca yerleri config'e tasindi. */
+Object.assign(CONFIG.FX, {
+  smoke: {
+    size: 5,             // parcacik boyutu (deterministik)
+    vy: -18,             // hafif yukari suruklenme (px/s)
+    rgb: '180,185,195',  // duman rengi (gruplu cizim fill)
+  },
+  spark: {
+    sizeMin: 1.5,
+    sizeMax: 3,          // sizeMin + LCG * (sizeMax - sizeMin)
+    gravity: 120,        // px/s^2 hafif yercekimi
+  },
+  explosion: {
+    baseSize: 96,        // boom_* sprite taban boyutu (px, olcek carpaniyla)
+    smokeDrift: -18,     // smoke sprite yukari suruklenmesi (px)
+  },
+});
+/* Vision P2 (shot_2/3/4, _gnd_a): duman kenarlari sert/pikselli — "yapistirilmis"
+ * gorunum. Yumusatma MEVCUT smoke bloklarini genisletir (EZME YOK):
+ *  - Iz dumani (SmokeSystem): ayni kova icinde icteki-disa N konsantrik gecis.
+ *    Pass alfalari agirlikla olceklendirilir; agirlikler 1'e toplandigi icin
+ *    merkezde toplam alfa ESKI TEPE ALFA ile ayni kalir (yogunluk korunur),
+ *    kenarda 1.0 -> 0.45 -> 0.17 -> 0 kademeli dusus sert kesimin yerine gecer.
+ *  - Boyut varyasyonu + buyume egrisi: parçaciklar ayni capli daireler olarak
+ *    "kopyala-yapistir" okunuyordu. Varyasyon LCG'den (Math.random YASAK),
+ *    determinizm bozulmaz.                                                          */
+Object.assign(CONFIG.FX.smoke, {
+  sizeVar: 0.35,         // ±%35 boyut varyasyonu (spawn'da LCG'den)
+  grow: 0.9,             // oransal buyume (1/s) — parçacik omrunde ~1.5x
+  edgePasses: [          // icteki-disa yumusak kenar gecisleri
+    { r: 1.0, w: 0.55 }, // cekirdek: agirligin yarisindan fazlasi
+    { r: 1.4, w: 0.28 }, // ara kadem
+    { r: 1.85, w: 0.17 },// dis soluk hale — sert kesimi alan pass bu
+  ],
+});
+Object.assign(CONFIG.FX.explosion, {
+  smokeHaloScale: 1.35,  // boom_smoke dis hale olcek carpani (kenar gecisi)
+  smokeHaloAlpha: 0.35,  // hale alfa payi; cekirdek (1-pay) ile toplam tepe
+                         // alfa smokeMaxAlpha (0.16) ile ayni kalir
+});
 /* Round 21: mermi izi — koyu kontrast halesi + parlak cekirdek. YALNIZ CIZIM.
  *
  * Neden: `foreground_contrast` kapisi her mermi icin ±6 px penceresindeki EN
@@ -76,8 +117,8 @@ Object.assign(CONFIG.FX, {
 Object.assign(CONFIG.FX, {
   tracer: {
     len: 22,                        // iz uzunlugu (tracer_shape: <= 22 px)
-    haloW: [6.3, 4.3, 2.7, 1.3],    // hale genisligi = CONFIG.BULLET.w * kat
-    haloA: [0.30, 0.30, 0.34, 0.42],// ...ve o katmanin siyah alfasi (carpim)
+                                    // (hale genislik/alfalari Round 26'da
+                                    // CONFIG.BULLET.halo'ya tasindi — units)
     glowW: 2.2,                     // yumusak additif parlama genisligi (kat)
     glowA: 0.18,                    // ...alfasi — medyani bozmayacak kadar dar
     tipR: 7,                        // uc parlamasi yaricapi (px)

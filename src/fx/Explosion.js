@@ -27,7 +27,7 @@ class Explosion {
     if (flashT < 1) {
       const sc = 0.4 + flashT * 1.6;
       const a = 1 - flashT;
-      const sz = 96 * sc;
+      const sz = CONFIG.FX.explosion.baseSize * sc;
       c.globalCompositeOperation = 'lighter';
       c.globalAlpha = a;
       assets.draw(c, 'boom_flash', -sz / 2, -sz / 2, sz, sz);
@@ -37,7 +37,7 @@ class Explosion {
     if (fireT < 1) {
       const sc = 0.55 + fireT * 1.55;
       const decay = Math.pow(1 - fireT, 2.8);   // DOGRUSAL DEGIL
-      const sz = 96 * sc;
+      const sz = CONFIG.FX.explosion.baseSize * sc;
       c.globalCompositeOperation = 'lighter';
       c.globalAlpha = decay;
       c.rotate(this.rot);
@@ -49,10 +49,17 @@ class Explosion {
     if (smokeT > 0 && smokeT < 1) {
       const sc = 0.6 + smokeT * 1.2;
       const a = F.smokeMaxAlpha * (1 - smokeT);
-      const driftY = -smokeT * 18;   // hafif yukari suruklenme
-      const sz = 96 * sc;
+      const driftY = smokeT * CONFIG.FX.explosion.smokeDrift;   // hafif yukari suruklenme
+      const sz = CONFIG.FX.explosion.baseSize * sc;
+      const E = CONFIG.FX.explosion;
       c.globalCompositeOperation = 'source-over';
-      c.globalAlpha = a;
+      // Yumusak kenar (vision P2): once genis/soluk hale, uzerine cekirdek.
+      // Hale payi cekirdekten dikiliyor (core = a*(1-pay)) — boylece merkezde
+      // toplam alfa smokeMaxAlpha'yi ASMAZ, yalnizca kenar gecisi kademelenir.
+      const hsz = sz * E.smokeHaloScale;
+      c.globalAlpha = a * E.smokeHaloAlpha;
+      assets.draw(c, 'boom_smoke', -hsz / 2, driftY - hsz / 2, hsz, hsz);
+      c.globalAlpha = a * (1 - E.smokeHaloAlpha);
       assets.draw(c, 'boom_smoke', -sz / 2, driftY - sz / 2, sz, sz);
       c.globalAlpha = 1;
     }
