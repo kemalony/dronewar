@@ -1,0 +1,66 @@
+# design/registry/entities.yaml — çapraz sistem gerçekleri (ICM Layer 3)
+# Oluşturan: design-system 5b (autonomous — dosya yoktu, "log ve devam"; 2026-09-29).
+# Kural: value alanları sahip GDD/CONFIG'ten DEĞİŞTİRİLMEZ; değişiklik = conflict, önce yüzeye çıkar.
+entities:
+  - name: powerup_capsule
+    type: item
+    category: drop
+    attributes:
+      fall_speed_px_s: 70
+      pick_radius_px: 30
+      expire_y: H_plus_30
+    source: design/gdd/powerup-drop-system.md
+    referenced_by: [powerup-drop-system]
+
+items:
+  - name: pu_weapon
+    type: item
+    weight: 0.12
+    attributes: { max_level: 3, over_max_score: 500, reset_flash_ms: 1200 }
+    source: src/core/CONFIG.js WEAPON
+    referenced_by: [powerup-drop-system]
+  - name: pu_rocket
+    type: item
+    weight: 0.08
+    attributes: { duration_ms: 15000, fire_ms: 900, speed_px_s: 520, turn_rate_deg_s: 180, damage: 3, pool: 8 }
+    source: src/core/CONFIG.js ROCKET
+    referenced_by: [powerup-drop-system]
+  - name: pu_shield
+    type: item
+    weight: 0.06
+    attributes: { shield_ms: 6000 }
+    source: src/game/game.config.js SHIELD
+    referenced_by: [powerup-drop-system]
+  - name: pu_subdrone
+    type: item
+    weight: 0.06
+    attributes: { pool_max: 2, full_score: 100 }
+    source: src/game/game.config.js SUBDRONE + units SUBDRONE
+    referenced_by: [powerup-drop-system]
+  - name: pu_repair
+    type: item
+    weight: 0.05
+    attributes: { heal: 1, max_lives: 3, full_score: 250 }
+    source: src/core/CONFIG.js REPAIR
+    referenced_by: [powerup-drop-system]
+
+formulas:
+  - name: drop_roll
+    variables: [r (LCG, 0..1)]
+    expression: "r<.12 weapon | r<.20 rocket | r<.26 shield | r<.32 subdrone | r<.37 repair | else none"
+    output_range: [0, 1]
+    source: src/game/Game.spawn.js _maybeDropPowerup
+    referenced_by: [powerup-drop-system]
+
+constants:
+  - name: pu_total_drop_chance
+    value: 0.37
+    unit: probability
+    source: derived (sum of weights)
+    referenced_by: [powerup-drop-system]
+  - name: repair_max_lives_hardcap
+    value: 3
+    unit: lives
+    source: src/core/CONFIG.js REPAIR.maxLives
+    note: "tank (5 can) dahil herkes için tavan — OQ-1"
+    referenced_by: [powerup-drop-system]
